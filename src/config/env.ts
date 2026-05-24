@@ -6,6 +6,26 @@ export interface AppEnv {
   port: number;
   databaseUrl: string;
   trpcPath: string;
+  authSecret: string;
+  authTtlSeconds: number;
+}
+
+const MIN_AUTH_SECRET_LENGTH = 32;
+const DEV_AUTH_SECRET =
+  'dev-only-secret-not-for-production-' + 'x'.repeat(MIN_AUTH_SECRET_LENGTH);
+
+function readAuthSecret(nodeEnv: AppEnv['nodeEnv']): string {
+  const raw = process.env.AUTH_SECRET;
+  if (raw && raw.length >= MIN_AUTH_SECRET_LENGTH) return raw;
+  if (raw) {
+    throw new Error(
+      `AUTH_SECRET must be at least ${MIN_AUTH_SECRET_LENGTH} characters`,
+    );
+  }
+  if (nodeEnv === 'production') {
+    throw new Error('AUTH_SECRET is required when NODE_ENV=production');
+  }
+  return DEV_AUTH_SECRET;
 }
 
 function readPort(): number {
@@ -33,5 +53,7 @@ export function loadEnv(): AppEnv {
     port: readPort(),
     databaseUrl: readDatabaseUrl(),
     trpcPath: process.env.TRPC_PATH ?? '/trpc',
+    authSecret: readAuthSecret(nodeEnv),
+    authTtlSeconds: Number.parseInt(process.env.AUTH_TTL_SECONDS ?? '3600', 10),
   };
 }
