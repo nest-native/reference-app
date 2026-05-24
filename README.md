@@ -1,82 +1,125 @@
-# reference-app
+# nest-native reference app
 
-<p align="center">Production reference application for the Nest Native stack.</p>
-
-<p align="center">
+<p>
   <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/license-MIT-green.svg" alt="License" /></a>
-  <img src="https://img.shields.io/badge/node-%3E%3D20-339933.svg" alt="Node 20+" />
-  <img src="https://img.shields.io/badge/status-bootstrap-yellow.svg" alt="Status: bootstrap" />
+  <img src="https://img.shields.io/badge/node-%3E%3D20-brightgreen.svg" alt="Node version" />
+  <img src="https://img.shields.io/badge/status-bootstrap-orange.svg" alt="Status" />
 </p>
 
 ## What This Is
 
-`reference-app` is the canonical reference application for the
-[Nest Native](https://nest-native.dev) stack. It demonstrates how
+A production-shaped reference application demonstrating how
 [`nest-drizzle-native`](https://github.com/nest-native/nest-drizzle-native) and
 [`nest-trpc-native`](https://github.com/nest-native/nest-trpc-native) compose
-under realistic backend pressure: feature modules, multi-tenant auth context,
-cross-service transactions, post-commit side effects via the transactional
-outbox pattern, real-database integration tests, and a typed tRPC client
-smoke check.
+under realistic backend pressure: feature modules, auth context, transactions
+across services, migrations, real-DB tests, an outbox-pattern worker for
+post-commit side effects, and a typed tRPC client smoke check.
 
-It exists to **serve the libraries** — to give adopters a credible end-to-end
-shape to study, and to give the libraries a feedback loop on what feels
-awkward in practice.
+## Why It Exists
+
+The reference app **serves the libraries** — it is not a product. Two implicit
+deliverables:
+
+1. A credible demo a team could adapt for a real backend.
+2. A feedback loop on the libraries themselves. If something feels awkward
+   here, that is signal to add API there in a separate PR to the relevant
+   library repo.
 
 ## Status
 
-Pre-bootstrap. The implementation brief is the single source of truth for v1
-scope, philosophy alignment, tech stack, module specs, the transactional
-workflow, the outbox spec, quality gates, and milestones:
+`v0.0.1-scaffold`. The bootstrap layer is in place: Nest app, Drizzle wired
+to SQLite with one schema, tRPC wired with one `ping` procedure, CI. The
+domain modules described in [docs/PROJECT_BRIEF.md](docs/PROJECT_BRIEF.md)
+(when present) land in subsequent milestones.
 
-- [`nest-native/nest-native.github.io` — `ideas/reference-app.md`](https://github.com/nest-native/nest-native.github.io/blob/main/ideas/reference-app.md)
+## Compatibility
 
-Read it end-to-end before contributing.
-
-## Compatibility (target)
-
-| Item | Target |
+| Runtime | Supported line |
 | --- | --- |
 | Node.js | `>=20` |
 | NestJS | `11.x` |
-| TypeScript | `^6` |
-| `nest-drizzle-native` | latest |
-| `nest-trpc-native` | latest |
-| Local database | SQLite (`better-sqlite3` or libSQL) |
-| Production database recipe | Postgres via `pg` |
+| tRPC | `11.x` |
+| Drizzle ORM | `0.45.x` |
+| `nest-drizzle-native` | `0.2.x` |
+| `nest-trpc-native` | `0.4.x` |
 
-## What it will demonstrate
+## Repo Layout
 
-- Module boundaries: organizations, users, projects, audit log, outbox.
-- Auth context with request-scoped `currentUser` / `currentOrganization`.
-- A single `@Transactional()` workflow that spans multiple services
-  (invite user → create project → write audit event → emit outbox event).
-- The transactional outbox pattern with a worker process, retries, and
-  crash recovery.
-- Real-database integration tests, including rollback safety.
-- A typed `AppRouter` consumed by a `client-smoke` workspace.
-- Production-shaped CI: typecheck, lint, complexity ceiling, coverage,
-  security audit, on Node 20 and 22.
+```
+src/
+  main.ts                  Nest bootstrap
+  app.module.ts            Root module
+  config/                  Environment loading
+  database/                Drizzle module wiring, schema, migrations
+  health/                  /health endpoint
+  trpc/                    tRPC module + routers + schema generation
+test/
+  integration/             Real-DB integration tests (node:test)
+  e2e/                     tRPC end-to-end smoke
+scripts/                   Migration runner, seed, smoke
+docs/                      Architecture, outbox, transactions, deployment
+```
 
-## Non-goals
+## Getting Started
 
-- A scaffolding CLI (`create-nest-native-app`).
-- A standalone outbox npm package.
-- A feature-rich frontend.
-- Multi-database or microservice topologies.
+```bash
+nvm use
+npm install
+npm run db:migrate
+npm run smoke
+```
+
+To run the API locally:
+
+```bash
+npm run start:dev
+```
+
+The HTTP server listens on `http://localhost:3000`. The tRPC endpoint is
+mounted at `/trpc`. The health endpoint is `GET /health`.
+
+## What It Demonstrates (so far)
+
+- `nest-drizzle-native` module setup with `better-sqlite3` for zero-setup
+  local dev.
+- `nest-trpc-native` module setup with one `ping` query at the root level.
+- Schema-first Drizzle table + a drizzle-kit-generated migration.
+- A smoke script that boots the Nest container, runs migrations against an
+  ephemeral SQLite file, and exercises the wired surfaces.
+
+## Testing
+
+```bash
+npm run test          # node --test, integration + e2e
+npm run test:cov      # with c8 coverage
+```
+
+Coverage is **pragmatic, not 100%**. The 100% bar belongs to the libraries.
+Aim for ≥90% on domain modules; the outbox worker and transactional workflow
+must have explicit rollback/retry tests regardless of overall percentage.
+
+## Quality Gates
+
+```bash
+npm run ci
+```
+
+Runs in order: `typecheck`, `lint`, `complexity:check` (cognitive complexity
+ceiling 15), `test:cov`, `security:audit` (`npm audit --audit-level=high`),
+`build`.
+
+CI runs on Node 20 and 22.
 
 ## Philosophy
 
-This app must feel native in NestJS while staying honest about the
-libraries it composes. Decorator-first, no hidden magic, no unnecessary
-runtime dependencies, no public helpers before a pattern repeats. Library
-bugs found here ship as separate PRs upstream to the relevant library
-repo, not as local workarounds.
+- **Feel native.** Decorator-first, Nest modules + DI + enhancers, lifecycle
+  hooks. No functional wrappers around library decorators.
+- **Stay honest.** Drizzle remains SQL-first; tRPC remains tRPC.
+- **No unnecessary runtime dependencies.** Every `dependencies` entry needs
+  a one-line justification in the PR that adds it.
+- **Library fixes ship as separate PRs to library repos.** If you find a bug
+  in `nest-drizzle-native` or `nest-trpc-native` while building here, stash,
+  open the library-fix PR upstream, get it merged, then resume.
 
-## License
-
-MIT (to be added in the bootstrap commit).
-
----
-
-Part of [Nest Native](https://nest-native.dev).
+See [AI_CODING_GUIDELINES.md](AI_CODING_GUIDELINES.md) for the rules an AI
+coding agent must preserve while editing this repo.

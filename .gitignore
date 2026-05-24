@@ -1,0 +1,26 @@
+node_modules/
+dist/
+coverage/
+
+AI_CODING_GUIDELINES.md
+
+*.log
+.DS_Store
+.env
+.env.*
+!.env.example
+
+# Local database files
+*.db
+*.db-journal
+*.sqlite
+*.sqlite-journal
+
+# Generated tRPC schema
+src/@generated/
+
+# Editor
+.vscode/
+.idea/
+
+.devcontainer/
