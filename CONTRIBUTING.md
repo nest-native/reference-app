@@ -4,11 +4,9 @@ Thanks for helping improve `nest-native/reference-app`. This repo is a
 reference application: it exists to **serve** `nest-drizzle-native` and
 `nest-trpc-native`, not to become a product of its own.
 
-If you use an AI coding agent, point it at
-[AI_CODING_GUIDELINES.md](AI_CODING_GUIDELINES.md). That file captures the
-repo-specific architecture, public API tiers of the libraries we depend on,
-security review, and module/scope rules that an agent should preserve while
-editing this repo.
+If you use an AI coding agent, brief it on the rules in this file — the
+design rules, dependency-review, and security-pass sections below are the
+contract an agent must preserve while editing this repo.
 
 ## Local Setup
 

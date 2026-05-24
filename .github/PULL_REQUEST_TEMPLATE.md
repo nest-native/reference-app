@@ -83,5 +83,6 @@
 
 ## AI Coding Agent Disclosure
 
-- [ ] If an AI coding agent changed this PR, it was given the repo-specific
-      guidance in `AI_CODING_GUIDELINES.md`
+- [ ] If an AI coding agent changed this PR, it was briefed on the design
+      rules, dependency-review, and security-pass sections in
+      `CONTRIBUTING.md`
