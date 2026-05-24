@@ -6,6 +6,28 @@ added them.
 
 ## [Unreleased]
 
+### Added (milestone 5 — core modules)
+
+- `src/modules/organizations/` (repository, service, router, module):
+  `organizations.current` and `organizations.list` queries. List joins
+  through `memberships` to return only orgs the current user belongs to;
+  current reads from the request-scoped `CURRENT_ORGANIZATION` provider.
+- `src/modules/users/` (repository, service, router, module): `users.me`
+  query and `users.list` (returns members of the current org with their
+  role and join date).
+- `src/modules/projects/` (repository, service, router, module):
+  `projects.list`, `projects.get`, and `projects.create` — all scoped to
+  the current organization; `create` records the current user as
+  `created_by`. `get` returns 404 (`NotFoundException`) for ids outside
+  the current org (no cross-tenant lookup leak).
+- All three feature modules use `DrizzleModule.forFeature([Repo])` per
+  the `nest-drizzle-native` primary API, and gate every procedure with
+  `@UseGuards(AuthGuard)` at the class level.
+- Tests: 10 e2e procedures cover the read paths, the create+list+get
+  round-trip, the 404 path, and 401 on unauthenticated calls. The
+  request-scoped `CURRENT_USER`/`CURRENT_ORGANIZATION` providers from
+  milestone 4 are exercised end-to-end.
+
 ### Added (milestone 4 — auth + request context)
 
 - `src/auth/` module: JWT helpers (`signJwt`/`verifyJwt` using `node:crypto`
