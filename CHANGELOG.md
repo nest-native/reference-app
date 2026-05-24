@@ -6,6 +6,24 @@ added them.
 
 ## [Unreleased]
 
+### Added
+
+- All five remaining schema files (`users`, `memberships`, `projects`,
+  `audit_events`, `outbox_events`) per brief §5. Foreign keys, the
+  `memberships (org_id, user_id)` unique index, the outbox partial unique
+  index on `idempotency_key`, and the `(status, available_at)` outbox
+  worker-claim index are all expressed in Drizzle and emitted into a new
+  drizzle-kit migration `0001_add_core_schema.sql`.
+- Seed script populates one org (`acme`), one admin user
+  (`admin@acme.test`), the matching admin membership, and one
+  `Starter Project`. Idempotent on re-run via SELECT-then-INSERT. Password
+  hash uses Node's built-in `scrypt` (no new runtime dep) with format
+  `scrypt$<salt-hex>$<hash-hex>` for milestone-4 auth to verify against.
+- Integration tests for the five new tables: unique constraints, foreign
+  key enforcement, JSON metadata round-trip, outbox partial-unique
+  semantics (multiple NULLs allowed, single non-null enforced).
+- Seed idempotency test: running seed twice yields stable row IDs.
+
 ## [0.0.1-scaffold] - 2026-05-24
 
 Initial bootstrap. Foundation only — no domain modules yet.
