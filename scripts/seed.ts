@@ -1,8 +1,8 @@
-import { randomBytes, scryptSync } from 'node:crypto';
 import Database from 'better-sqlite3';
 import { and, eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/better-sqlite3';
 import { migrate } from 'drizzle-orm/better-sqlite3/migrator';
+import { hashPassword } from '../src/auth/password';
 import { loadEnv } from '../src/config/env';
 import {
   type Membership,
@@ -20,14 +20,6 @@ type AppDb = ReturnType<typeof drizzle<typeof schema>>;
 
 function nowIso(): string {
   return new Date().toISOString();
-}
-
-// scrypt hash format: scrypt$<salt-hex>$<hash-hex>. Real format, no external
-// dep; milestone 4 will verify with the same scheme.
-function hashPassword(password: string): string {
-  const salt = randomBytes(16);
-  const hash = scryptSync(password, salt, 64);
-  return `scrypt$${salt.toString('hex')}$${hash.toString('hex')}`;
 }
 
 function ensureOrg(db: AppDb, slug: string, name: string): Organization {
