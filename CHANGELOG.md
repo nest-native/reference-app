@@ -6,6 +6,35 @@ added them.
 
 ## [Unreleased]
 
+### Added (milestone 4 — auth + request context)
+
+- `src/auth/` module: JWT helpers (`signJwt`/`verifyJwt` using `node:crypto`
+  HMAC-SHA256, real 3-part JWT format), scrypt password hash/verify
+  (`hashPassword`/`verifyPassword`), `AuthService.login()` (verify password +
+  mint JWT, picks first membership as active org), `AuthService.resolve()`
+  (verify JWT + parse to `AuthContext`).
+- `AuthMiddleware` (Express): extracts Bearer token from `Authorization`,
+  populates `req.authContext` on success, silently passes on missing/invalid
+  token (`AuthGuard` rejects later).
+- `AuthGuard` (Nest): works for both HTTP and tRPC procedures
+  (`switchToHttp` and `getArgs()[1]` fall-throughs).
+- `AuthRouter` tRPC procedures: `auth.login` mutation and `auth.me` query
+  (`@UseGuards(AuthGuard)`).
+- `RequestContextModule` exposes request-scoped `CURRENT_USER` and
+  `CURRENT_ORGANIZATION` providers for any HTTP-path service that needs them
+  via DI (milestone 5+).
+- HTTP-only `@CurrentUser`/`@CurrentOrganization` param decorators for use
+  in REST controllers; tRPC procedures use `@TrpcContext('authContext')`.
+- `src/config/env.ts` now reads `AUTH_SECRET` (min 32 chars; required in
+  production; deterministic insecure default in dev/test) and
+  `AUTH_TTL_SECONDS` (default 3600).
+- Seed refactored to import `hashPassword` from `src/auth/password.ts` — no
+  duplication of the scrypt format.
+- Tests: 6 JWT tests (roundtrip, tamper, expiry, wrong secret, malformed,
+  unsupported alg), 5 password tests (positive, negative, malformed, salt
+  uniqueness), 5 e2e auth-flow tests (login, wrong password → 401, me
+  without token → 401, me with token, me with bad token → 401).
+
 ### Added
 
 - All five remaining schema files (`users`, `memberships`, `projects`,
