@@ -1,0 +1,85 @@
+{
+  "name": "nest-native-reference-app",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Production-shaped reference app for the nest-native stack (nest-drizzle-native + nest-trpc-native)",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nest-native/reference-app.git"
+  },
+  "license": "MIT",
+  "author": "Rodrigo Nogueira",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "rimraf dist && tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "complexity:check": "eslint --config eslint.complexity-check.config.mjs \"src/**/*.ts\"",
+    "complexity:report": "eslint --config eslint.complexity.config.mjs \"src/**/*.ts\"",
+    "test": "node --import tsx --test test/integration/*.spec.ts test/e2e/*.spec.ts",
+    "test:cov": "c8 node --import tsx --test test/integration/*.spec.ts test/e2e/*.spec.ts",
+    "security:audit": "npm audit --audit-level=high",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "tsx scripts/migrate.ts",
+    "seed": "tsx scripts/seed.ts",
+    "smoke": "tsx scripts/smoke.ts",
+    "trpc:generate": "tsx src/trpc/generate-types.ts",
+    "start": "node dist/main.js",
+    "start:dev": "tsx watch src/main.ts",
+    "ci": "npm run typecheck && npm run lint && npm run complexity:check && npm run test:cov && npm run security:audit && npm run build"
+  },
+  "dependencies": {
+    "@nestjs/common": "11.1.23",
+    "@nestjs/core": "11.1.23",
+    "@nestjs/platform-express": "11.1.23",
+    "@trpc/server": "11.17.0",
+    "better-sqlite3": "12.10.0",
+    "drizzle-orm": "0.45.2",
+    "nest-drizzle-native": "0.2.1",
+    "nest-trpc-native": "0.4.2",
+    "reflect-metadata": "0.2.2",
+    "rxjs": "7.8.2",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "7.6.13",
+    "@types/node": "22.10.5",
+    "@typescript-eslint/parser": "8.59.4",
+    "c8": "11.0.0",
+    "drizzle-kit": "0.31.10",
+    "eslint": "10.4.0",
+    "eslint-plugin-sonarjs": "4.0.3",
+    "rimraf": "6.1.3",
+    "tsx": "4.20.3",
+    "typescript": "6.0.3"
+  },
+  "c8": {
+    "all": true,
+    "extension": [
+      ".ts"
+    ],
+    "include": [
+      "src/**/*.ts"
+    ],
+    "exclude": [
+      "**/*.spec.ts",
+      "**/test/**",
+      "**/dist/**",
+      "**/*.d.ts",
+      "src/@generated/**",
+      "src/main.ts",
+      "src/trpc/generate-types.ts"
+    ],
+    "reporter": [
+      "text",
+      "text-summary",
+      "json-summary",
+      "lcov"
+    ],
+    "cache": false
+  },
+  "packageManager": "npm@11.13.0"
+}

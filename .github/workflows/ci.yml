@@ -1,0 +1,71 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  ci:
+    name: CI (Node ${{ matrix.node-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: ['20', '22']
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run drizzle migrations against ephemeral SQLite
+        run: npm run db:migrate
+        env:
+          DATABASE_URL: ./ci.db
+
+      - name: Generate tRPC schema
+        run: npm run trpc:generate
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Cognitive complexity gate
+        run: npm run complexity:check
+
+      - name: Tests with coverage
+        run: npm run test:cov
+
+      - name: Security audit
+        run: npm run security:audit
+
+      - name: Build
+        run: npm run build
+
+      - name: Smoke
+        run: npm run smoke
+
+      - name: Upload coverage artifacts
+        if: matrix.node-version == '22'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: |
+            coverage/coverage-summary.json
+            coverage/lcov.info
+            coverage/lcov-report/**
+          if-no-files-found: warn

@@ -1,0 +1,82 @@
+name: Bug report
+description: Report a reproducible problem in the reference app.
+title: "bug: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug. Please keep the report focused and include a minimal reproduction where possible.
+
+        If this is security-sensitive, do not include exploit details here. See `SECURITY.md` first.
+
+        If the issue is in `nest-drizzle-native` or `nest-trpc-native` themselves, please file it on the library repo instead.
+  - type: input
+    id: commit
+    attributes:
+      label: Reference-app commit or release
+      description: Commit SHA or tag where the problem occurs.
+      placeholder: "v0.0.1-scaffold"
+    validations:
+      required: true
+  - type: input
+    id: node
+    attributes:
+      label: Node.js version
+      placeholder: "20.x or 22.x"
+    validations:
+      required: true
+  - type: dropdown
+    id: module
+    attributes:
+      label: Affected module
+      options:
+        - organizations / users / memberships
+        - projects
+        - audit-log
+        - outbox (module or worker)
+        - auth / context
+        - trpc (routers / generated schema)
+        - database (schema / migrations / wiring)
+        - tooling / CI
+        - docs
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal reproduction
+      description: Steps, commands, or the smallest relevant snippet.
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or error output
+      description: Remove secrets, private URLs, and production data before posting.
+      render: shell
+    validations:
+      required: false
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Pre-submit checks
+      options:
+        - label: I confirmed this is a problem in the reference app itself, not in `nest-drizzle-native` or `nest-trpc-native`.
+          required: true
+        - label: I removed secrets, tokens, private URLs, and user data from this report.
+          required: true
