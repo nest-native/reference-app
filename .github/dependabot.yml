@@ -1,0 +1,51 @@
+version: 2
+
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "America/Sao_Paulo"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(deps)"
+      prefix-development: "chore(deps-dev)"
+      include: "scope"
+    groups:
+      dev-tooling-minor-patch:
+        dependency-type: "development"
+        update-types:
+          - "minor"
+          - "patch"
+        patterns:
+          - "*"
+      nest-stack-minor-patch:
+        update-types:
+          - "minor"
+          - "patch"
+        patterns:
+          - "@nestjs/common"
+          - "@nestjs/core"
+          - "@nestjs/platform-express"
+          - "@trpc/*"
+          - "drizzle-orm"
+          - "drizzle-kit"
+          - "nest-drizzle-native"
+          - "nest-trpc-native"
+          - "reflect-metadata"
+          - "rxjs"
+          - "zod"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "America/Sao_Paulo"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(actions)"
+      include: "scope"

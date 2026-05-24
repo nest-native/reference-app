@@ -1,0 +1,59 @@
+name: Feature request
+description: Propose a focused improvement to the reference app.
+title: "feat: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Feature requests should serve the libraries this repo demonstrates (`nest-drizzle-native`, `nest-trpc-native`), not turn the reference app into a product.
+
+        If the feature is really a library improvement, please file it on the library repo instead.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What user or maintainer problem would this solve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Describe the module, docs, sample, or tooling change you want.
+    validations:
+      required: true
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Affected surface
+      options:
+        - Domain module
+        - Outbox / worker
+        - Auth / request context
+        - Database / migrations
+        - tRPC routers / generated schema
+        - Tooling / CI
+        - Documentation
+    validations:
+      required: true
+  - type: checkboxes
+    id: design
+    attributes:
+      label: Design constraints
+      options:
+        - label: This stays decorator-first and Nest-native.
+          required: true
+        - label: This does not require adding a new runtime dependency, or I explained why that tradeoff is necessary.
+          required: true
+        - label: This does not reach for library internals (`nest-drizzle-native`, `nest-trpc-native`).
+          required: true
+        - label: This exercises one of the two libraries this repo exists to demonstrate (it is not a generic NestJS feature).
+          required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+    validations:
+      required: false
