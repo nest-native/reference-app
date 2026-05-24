@@ -16,7 +16,7 @@ Initial bootstrap. Foundation only — no domain modules yet.
   flat configs (lint + complexity report + complexity gate at 15),
   `drizzle.config.ts`, `.gitignore`, `.nvmrc`.
 - Governance files: `LICENSE` (MIT), `README.md`, `CONTRIBUTING.md`,
-  `SECURITY.md`, `AI_CODING_GUIDELINES.md`.
+  `SECURITY.md`.
 - `.github/` layout: PR template, bug/feature issue templates, dependabot
   config, CI workflow on Node 20 + 22 running `npm run ci`.
 - Nest scaffold: `main.ts`, `AppModule`, `/health` endpoint.

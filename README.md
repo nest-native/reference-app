@@ -121,5 +121,5 @@ CI runs on Node 20 and 22.
   in `nest-drizzle-native` or `nest-trpc-native` while building here, stash,
   open the library-fix PR upstream, get it merged, then resume.
 
-See [AI_CODING_GUIDELINES.md](AI_CODING_GUIDELINES.md) for the rules an AI
-coding agent must preserve while editing this repo.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for design rules, the library-fix
+workflow, dependency review, and security pass expectations.
