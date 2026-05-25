@@ -304,9 +304,12 @@ add here:
 
 - **Not a CLI** (`create-nest-native-app`). Permanent maintenance cost,
   marginal value vs. a well-organized template repo.
-- **Not the home of a standalone `nest-outbox-native` package.** The
-  outbox lives here as a module. Extract only after three+ real apps
-  independently rewrite the same shape.
+- **Not the home of a standalone outbox package.** The outbox pattern
+  lives here as an in-app module. A hypothetical `nest-outbox-native`
+  extraction (no such package exists today) is only worth considering
+  after three+ real apps independently rewrite the same shape — until
+  then, every adopter forks this module's code rather than depending on
+  a package.
 - **Not a frontend.** The `client-smoke/` workspace is a typed-client
   smoke test, not a UI.
 - **Not multi-database / GraphQL / micro-frontends.** Resist scope creep.
