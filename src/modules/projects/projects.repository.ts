@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
+import { InjectTransaction } from '@nestjs-cls/transactional';
 import { and, desc, eq } from 'drizzle-orm';
-import { DrizzleRepository, InjectDrizzle } from 'nest-drizzle-native';
+import { DrizzleRepository } from 'nest-drizzle-native';
 import type { AppDatabase } from '../../database/database';
 import { type Project, projects } from '../../database/schema';
 
@@ -13,7 +14,7 @@ export interface CreateProjectInput {
 @Injectable()
 @DrizzleRepository()
 export class ProjectsRepository {
-  constructor(@InjectDrizzle() private readonly db: AppDatabase) {}
+  constructor(@InjectTransaction() private readonly db: AppDatabase) {}
 
   listForOrg(orgId: number): Project[] {
     return this.db
