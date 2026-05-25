@@ -1,0 +1,17 @@
+title: nest-native reference app
+description: Production-shaped reference application for the nest-native stack
+url: https://nest-native.dev
+baseurl: /reference-app
+
+# Use the default GitHub Pages markdown processor; no theme — the index.html
+# is fully self-styled (see styles.css) and architecture.md is rendered as a
+# subpage by Jekyll's default kramdown.
+theme: null
+
+# Don't publish project metadata files via Pages.
+exclude:
+  - README.md
+  - LICENSE
+  - CONTRIBUTING.md
+  - SECURITY.md
+  - CHANGELOG.md

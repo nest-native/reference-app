@@ -6,6 +6,35 @@ added them.
 
 ## [Unreleased]
 
+### Added — landing page on nest-native.dev/reference-app
+
+- `docs/index.html` and `docs/styles.css` mirror the org landing site's
+  visual language (`nest-native.github.io`). Contents: hero + stack
+  panel, eight-milestone status grid, link-out section to the GitHub
+  repo / architecture doc / releases / library docs.
+- `docs/_config.yml` minimal Jekyll config (no theme, `baseurl:
+  /reference-app`, excludes top-level project metadata files from being
+  published).
+- `docs/architecture.md` in-repo links rewritten to absolute
+  `https://github.com/nest-native/reference-app/blob/main/…` URLs so the
+  page renders correctly from `nest-native.dev/reference-app/architecture.html`
+  as well as from the GitHub blob view.
+- Removed `nest-trpc-handover.md`. The `nest-trpc-native` bug it
+  described was fixed and shipped in `0.4.3`; the file was archival-only.
+
+### Pages enablement (post-merge, one-time)
+
+GitHub Pages is not yet enabled for this repo. After this PR merges,
+enable it from `main:/docs` once so the org-domain auto-route picks
+the site up:
+
+```
+gh api -X POST repos/nest-native/reference-app/pages \
+  -f source[branch]=main -f source[path]=/docs
+```
+
+After ~1 minute, `https://nest-native.dev/reference-app/` will resolve.
+
 ### Added (milestone 8 — polish)
 
 - `client-smoke/`: a typed tRPC client workspace per brief §5. Imports
