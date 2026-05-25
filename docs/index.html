@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>nest-native reference app</title>
+    <meta
+      name="description"
+      content="Production-shaped reference application for the nest-native stack — nest-drizzle-native and nest-trpc-native composing under realistic backend pressure."
+    >
+    <meta property="og:title" content="nest-native reference app">
+    <meta
+      property="og:description"
+      content="Production-shaped reference application for the nest-native stack."
+    >
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://nest-native.dev/reference-app/">
+    <meta name="theme-color" content="#101820">
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <header class="site-header" aria-label="Primary">
+      <a class="brand" href="https://nest-native.dev/" aria-label="Nest Native home">
+        <span class="brand-mark" aria-hidden="true">N</span>
+        <span>Nest Native</span>
+      </a>
+      <nav class="nav-links" aria-label="Sections">
+        <a href="#what">What it is</a>
+        <a href="#milestones">Milestones</a>
+        <a href="#links">Links</a>
+        <a href="https://github.com/nest-native">Org</a>
+      </nav>
+    </header>
+
+    <main>
+      <section class="hero">
+        <div class="hero-copy">
+          <p class="eyebrow">Reference application</p>
+          <h1>The nest-native stack, end to end.</h1>
+          <p class="hero-lede">
+            A production-shaped reference application that demonstrates how
+            <a href="https://nest-native.dev/nest-drizzle-native/">nest-drizzle-native</a>
+            and
+            <a href="https://nest-native.dev/nest-trpc-native/">nest-trpc-native</a>
+            compose under realistic backend pressure: feature modules,
+            multi-tenant auth context, cross-service transactions, real-database
+            integration tests, an outbox-pattern worker for post-commit side
+            effects, and a typed tRPC client smoke check.
+          </p>
+          <div class="hero-actions" aria-label="Primary actions">
+            <a class="button primary" href="https://github.com/nest-native/reference-app">View on GitHub</a>
+            <a class="button secondary" href="architecture.html">Read the architecture</a>
+          </div>
+        </div>
+        <div class="hero-panel" aria-label="Stack at a glance">
+          <div class="panel-row">
+            <span>API</span>
+            <strong>NestJS 11.x</strong>
+          </div>
+          <div class="panel-row">
+            <span>RPC</span>
+            <strong>tRPC 11.x</strong>
+          </div>
+          <div class="panel-row">
+            <span>ORM</span>
+            <strong>Drizzle 0.45.x</strong>
+          </div>
+          <div class="panel-row">
+            <span>DB</span>
+            <strong>better-sqlite3</strong>
+          </div>
+          <div class="panel-row">
+            <span>Transactions</span>
+            <strong>@Transactional()</strong>
+          </div>
+          <div class="panel-row">
+            <span>Side effects</span>
+            <strong>outbox + worker</strong>
+          </div>
+        </div>
+      </section>
+
+      <section id="what" class="section split">
+        <div class="section-heading">
+          <p class="eyebrow">What it is</p>
+          <h2>Serves the libraries.</h2>
+        </div>
+        <div class="principles">
+          <p>
+            The reference app exists to demonstrate the two libraries this
+            organization publishes — not to become a product of its own. Two
+            implicit deliverables:
+          </p>
+          <ul>
+            <li>A credible demo a team could adapt for a real backend.</li>
+            <li>A feedback loop on the libraries themselves — if a pattern feels awkward here, that's signal to add API upstream.</li>
+          </ul>
+          <p>
+            All eight milestones from the implementation brief are complete.
+            Every commit landed via PR with a security and dependency review.
+            <code>npm run ci</code> passes on Node 20 and Node 22.
+          </p>
+        </div>
+      </section>
+
+      <section id="milestones" class="section">
+        <div class="section-heading">
+          <p class="eyebrow">Status</p>
+          <h2>Eight milestones, eight PRs, one tag.</h2>
+        </div>
+        <div class="milestones">
+          <div class="milestone">
+            <span class="milestone-num">01</span>
+            <span class="milestone-title">Bootstrap</span>
+            <span class="milestone-status">done</span>
+            <span class="milestone-desc">Repo skeleton, governance, CI on Node 20+22, Nest scaffold, Drizzle and tRPC wired.</span>
+          </div>
+          <div class="milestone">
+            <span class="milestone-num">02</span>
+            <span class="milestone-title">Database wired</span>
+            <span class="milestone-status">done</span>
+            <span class="milestone-desc">Drizzle with better-sqlite3, ephemeral local DB, smoke test exercising the connection.</span>
+          </div>
+          <div class="milestone">
+            <span class="milestone-num">03</span>
+            <span class="milestone-title">Schema + seed</span>
+            <span class="milestone-status">done</span>
+            <span class="milestone-desc">Six tables, drizzle-kit migrations, idempotent seed (one org, one admin, one starter project).</span>
+          </div>
+          <div class="milestone">
+            <span class="milestone-num">04</span>
+            <span class="milestone-title">Auth + request context</span>
+            <span class="milestone-status">done</span>
+            <span class="milestone-desc">scrypt passwords, real HS256 JWT, AuthGuard, request-scoped CURRENT_USER / CURRENT_ORGANIZATION.</span>
+          </div>
+          <div class="milestone">
+            <span class="milestone-num">05</span>
+            <span class="milestone-title">Core modules</span>
+            <span class="milestone-status">done</span>
+            <span class="milestone-desc">organizations, users, projects — repositories + services + tRPC routers, scoped by current org.</span>
+          </div>
+          <div class="milestone">
+            <span class="milestone-num">06</span>
+            <span class="milestone-title">Transactional workflow</span>
+            <span class="milestone-status">done</span>
+            <span class="milestone-desc">inviteUser writes 5 rows in one @Transactional. Happy-path, rollback-safety, worker-crash-recovery tests.</span>
+          </div>
+          <div class="milestone">
+            <span class="milestone-num">07</span>
+            <span class="milestone-title">Outbox worker</span>
+            <span class="milestone-status">done</span>
+            <span class="milestone-desc">Long-running OutboxClaimer poller with graceful shutdown over SIGTERM/SIGINT.</span>
+          </div>
+          <div class="milestone">
+            <span class="milestone-num">08</span>
+            <span class="milestone-title">Polish</span>
+            <span class="milestone-status">done</span>
+            <span class="milestone-desc">Typed client-smoke (AppRouter), Dockerfile + docker-compose, this site, finalized README.</span>
+          </div>
+        </div>
+      </section>
+
+      <section id="links" class="section split">
+        <div class="section-heading">
+          <p class="eyebrow">Where to go next</p>
+          <h2>Read the code, run the app.</h2>
+        </div>
+        <div class="links-list">
+          <a href="https://github.com/nest-native/reference-app">
+            <span>Source on GitHub</span><span>git clone ⟶</span>
+          </a>
+          <a href="architecture.html">
+            <span>docs/architecture.md</span><span>one-sitting tour ⟶</span>
+          </a>
+          <a href="https://github.com/nest-native/reference-app#getting-started">
+            <span>Getting started</span><span>npm install ⟶</span>
+          </a>
+          <a href="https://github.com/nest-native/reference-app/blob/main/CHANGELOG.md">
+            <span>CHANGELOG</span><span>release notes ⟶</span>
+          </a>
+          <a href="https://github.com/nest-native/reference-app/releases/tag/v0.1.0">
+            <span>v0.1.0 release</span><span>all eight milestones ⟶</span>
+          </a>
+          <a href="https://nest-native.dev/nest-drizzle-native/">
+            <span>nest-drizzle-native docs</span><span>library ⟶</span>
+          </a>
+          <a href="https://nest-native.dev/nest-trpc-native/">
+            <span>nest-trpc-native docs</span><span>library ⟶</span>
+          </a>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <span>nest-native / reference-app</span>
+      <a href="https://github.com/nest-native/reference-app">github.com/nest-native/reference-app</a>
+    </footer>
+  </body>
+</html>

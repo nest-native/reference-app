@@ -41,9 +41,9 @@ Each section answers one question.
 The two libraries are wired exactly once each, via their primary `forRoot`
 APIs:
 
-- [`src/database/database.module.ts`](../src/database/database.module.ts) →
+- [`src/database/database.module.ts`](https://github.com/nest-native/reference-app/blob/main/src/database/database.module.ts) →
   `DrizzleModule.forRoot({ schema, connection, shutdown })`.
-- [`src/trpc/trpc.module.ts`](../src/trpc/trpc.module.ts) →
+- [`src/trpc/trpc.module.ts`](https://github.com/nest-native/reference-app/blob/main/src/trpc/trpc.module.ts) →
   `TrpcModule.forRoot<AppTrpcContext>({ path, autoSchemaFile,
   createContext })`.
 
@@ -113,20 +113,20 @@ deterministic dev fallback elsewhere).
 
 JWT verification uses Node's built-in `node:crypto` HMAC — there's no JWT
 library dependency. See
-[`src/auth/jwt.ts`](../src/auth/jwt.ts) for the ~50-line implementation;
-the test [`test/integration/auth-jwt.spec.ts`](../test/integration/auth-jwt.spec.ts)
+[`src/auth/jwt.ts`](https://github.com/nest-native/reference-app/blob/main/src/auth/jwt.ts) for the ~50-line implementation;
+the test [`test/integration/auth-jwt.spec.ts`](https://github.com/nest-native/reference-app/blob/main/test/integration/auth-jwt.spec.ts)
 covers roundtrip, tamper, expiry, wrong-secret, malformed, and unsupported-algorithm cases.
 
 Password hashing is `scrypt` with a 16-byte random salt; format is
 `scrypt$<salt-hex>$<hash-hex>`. The same helpers are reused by
-[`scripts/seed.ts`](../scripts/seed.ts) so seeded users can log in.
+[`scripts/seed.ts`](https://github.com/nest-native/reference-app/blob/main/scripts/seed.ts) so seeded users can log in.
 
 ## The central transactional workflow
 
 Brief §7's "single proof": `users.invite` writes across **five tables**
 inside one `@Transactional()` method and queues a post-commit side effect.
 The method is on
-[`OrganizationOnboardingService`](../src/modules/onboarding/organization-onboarding.service.ts):
+[`OrganizationOnboardingService`](https://github.com/nest-native/reference-app/blob/main/src/modules/onboarding/organization-onboarding.service.ts):
 
 ```
 @Transactional()
@@ -159,7 +159,7 @@ as a successful sync return, so it commits an empty tx and the actual
 writes happen *after* commit (against a closed tx).
 
 Our adapter
-([`src/database/sync-drizzle-transactional-adapter.ts`](../src/database/sync-drizzle-transactional-adapter.ts))
+([`src/database/sync-drizzle-transactional-adapter.ts`](https://github.com/nest-native/reference-app/blob/main/src/database/sync-drizzle-transactional-adapter.ts))
 keeps the inner callback synchronous and still returns a Promise from
 `wrapWithTransaction` to satisfy the plugin contract. If you switch the app
 to libsql or Postgres later, swap back to the official adapter — no other
@@ -168,7 +168,7 @@ code has to change.
 ### Rollback safety, exactly-once delivery
 
 Three §7-mandatory tests in
-[`test/integration/invite-user.workflow.spec.ts`](../test/integration/invite-user.workflow.spec.ts):
+[`test/integration/invite-user.workflow.spec.ts`](https://github.com/nest-native/reference-app/blob/main/test/integration/invite-user.workflow.spec.ts):
 
 - **Happy path:** all five rows persisted; outbox row visible after commit;
   worker tick processes it; `FakeEmailTransport` records the email.
@@ -182,7 +182,7 @@ Three §7-mandatory tests in
 ## Outbox
 
 Schema is at
-[`src/database/schema/outbox-events.ts`](../src/database/schema/outbox-events.ts)
+[`src/database/schema/outbox-events.ts`](https://github.com/nest-native/reference-app/blob/main/src/database/schema/outbox-events.ts)
 and matches brief §8: `pending | processing | completed | failed` status
 machine, partial-unique `idempotency_key`, `(status, available_at)` claim
 index, attempts/maxAttempts counters with backoff.
@@ -191,18 +191,18 @@ The flow has three pieces:
 
 | Piece | File | Job |
 | --- | --- | --- |
-| Producer | [`outbox-producer.service.ts`](../src/modules/outbox/outbox-producer.service.ts) | `enqueue({ topic, payload, idempotencyKey? })` — inserts a `pending` row inside the active tx |
-| Registry | [`outbox-registry.service.ts`](../src/modules/outbox/outbox-registry.service.ts) | `register(topic, handler)` — handler module init binds itself |
-| Claimer | [`outbox-claimer.service.ts`](../src/modules/outbox/outbox-claimer.service.ts) | `tick()` — atomic claim (pending OR stuck processing), dispatch, mark completed/retry/failed |
+| Producer | [`outbox-producer.service.ts`](https://github.com/nest-native/reference-app/blob/main/src/modules/outbox/outbox-producer.service.ts) | `enqueue({ topic, payload, idempotencyKey? })` — inserts a `pending` row inside the active tx |
+| Registry | [`outbox-registry.service.ts`](https://github.com/nest-native/reference-app/blob/main/src/modules/outbox/outbox-registry.service.ts) | `register(topic, handler)` — handler module init binds itself |
+| Claimer | [`outbox-claimer.service.ts`](https://github.com/nest-native/reference-app/blob/main/src/modules/outbox/outbox-claimer.service.ts) | `tick()` — atomic claim (pending OR stuck processing), dispatch, mark completed/retry/failed |
 
 The `user.invited` topic has exactly one handler
-([`user-invited.handler.ts`](../src/modules/outbox/user-invited.handler.ts))
+([`user-invited.handler.ts`](https://github.com/nest-native/reference-app/blob/main/src/modules/outbox/user-invited.handler.ts))
 that delegates to `FakeEmailTransport`. In a real app, swap the transport
 for SES, Sendgrid, etc.
 
 ## The worker process
 
-[`scripts/start-worker.ts`](../scripts/start-worker.ts) boots a headless
+[`scripts/start-worker.ts`](https://github.com/nest-native/reference-app/blob/main/scripts/start-worker.ts) boots a headless
 Nest application context, resolves `OutboxClaimer` from DI, and ticks on
 `OUTBOX_POLL_MS` (default 2s). `SIGTERM` and `SIGINT` abort an
 `AbortController` that interrupts the in-flight wait, lets the current
@@ -263,7 +263,7 @@ production deployment on Postgres:
 
 1. Swap `drizzle-orm/better-sqlite3` for `drizzle-orm/node-postgres` (or
    `drizzle-orm/postgres-js`) in
-   [`src/database/database.ts`](../src/database/database.ts).
+   [`src/database/database.ts`](https://github.com/nest-native/reference-app/blob/main/src/database/database.ts).
 2. Swap `pragma('journal_mode = WAL')` etc. for the Postgres equivalents
    (typically nothing — set search_path if needed).
 3. Replace `SyncDrizzleTransactionalAdapter` with the official
@@ -274,7 +274,7 @@ production deployment on Postgres:
    the drizzle-kit output for Postgres differs (it usually doesn't for
    this shape).
 5. Set `DATABASE_URL=postgres://…` in the environment. The Postgres
-   sections in [`docker-compose.yml`](../docker-compose.yml) are commented
+   sections in [`docker-compose.yml`](https://github.com/nest-native/reference-app/blob/main/docker-compose.yml) are commented
    for exactly this scenario.
 
 Run API and worker as two processes off the same image:
