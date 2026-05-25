@@ -6,6 +6,70 @@ added them.
 
 ## [Unreleased]
 
+### Added (milestone 6 — audit log + outbox + transactional workflow)
+
+- `nestjs-cls`, `@nestjs-cls/transactional`, and
+  `@nestjs-cls/transactional-adapter-drizzle-orm` wired in `AppModule` via
+  `ClsModule.forRoot({ plugins: [new ClsPluginTransactional(...)] })`.
+- `src/database/sync-drizzle-transactional-adapter.ts`: custom CLS
+  transactional adapter that keeps the inner Drizzle callback synchronous.
+  Required because the official `@nestjs-cls/transactional-adapter-drizzle-orm`
+  wraps the callback in `async`, which silently breaks `better-sqlite3`
+  (its `client.transaction(fn)` is synchronous and sees the async callback
+  return a Promise immediately, committing an empty tx). The custom
+  adapter still returns a Promise from `wrapWithTransaction` to satisfy
+  the plugin contract.
+- `src/modules/memberships/`: `MembershipsRepository` (single-table repo
+  used by the onboarding workflow; uses `@InjectTransaction()` so writes
+  participate in the active `@Transactional()` scope).
+- `src/modules/audit-log/`: `AuditLogService.record()` — inserts an
+  `audit_events` row inside the active tx, via `@InjectTransaction()`.
+- `src/modules/outbox/`:
+  - `OutboxProducer.enqueue()` writes a pending `outbox_events` row inside
+    the active tx.
+  - `OutboxRegistry` is a per-topic handler registry (`register(topic, fn)`).
+  - `FakeEmailTransport` records `send()` calls for assertable tests.
+  - `UserInvitedHandler` registers a handler for the `user.invited` topic
+    on module init and dispatches to `FakeEmailTransport`.
+  - `OutboxClaimer.tick()` atomically claims pending events (or stuck
+    `processing` events past a stuck-timeout — `BEGIN IMMEDIATE` shape per
+    brief §8), dispatches to the registered handler, marks `completed`
+    on success, retries with exponential backoff + jitter on failure, and
+    marks `failed` when `attempts >= maxAttempts`.
+- `src/modules/onboarding/`: `OrganizationOnboardingService.inviteUser()` —
+  the central `@Transactional()` workflow described in brief §7. Inside
+  one transaction: upserts a user (with scrypt hash), inserts the
+  membership, inserts a starter project, records a `user.invited` audit
+  event, and enqueues a `user.invited` outbox event with an idempotency
+  key of the form `user.invited:{orgId}:{userId}:{projectId}`.
+- `users.invite` tRPC mutation (`@UseGuards(AuthGuard)`) calls the
+  onboarding service; reads `currentOrganization` from the auth context.
+- **Three §7 mandatory tests in
+  `test/integration/invite-user.workflow.spec.ts`** — all pass on local CI:
+  - **Happy path**: invite persists 5 rows (`users`, `memberships`,
+    `projects`, `audit_events`, `outbox_events`); a subsequent
+    `OutboxClaimer.tick()` marks the row `completed` and records exactly
+    one email through `FakeEmailTransport`.
+  - **Rollback safety**: forces a `throw` from `ProjectsRepository.create`
+    between steps 3 and 4; asserts no rows of any kind from this
+    transaction persist and no email is recorded.
+  - **Worker crash recovery**: inserts an outbox row directly with
+    `status='processing'`, stale `claimed_at`, and a dead `claimed_by`;
+    asserts the next `tick()` re-claims (under the configurable
+    stuck-timeout), processes exactly once, and an immediate follow-up
+    tick is a no-op.
+
+### Runtime dependency justifications (milestone 6)
+
+- `nestjs-cls`: ALS-backed request-scoped state used by
+  `@nestjs-cls/transactional`'s `TransactionHost`. Brief §4 lists it.
+- `@nestjs-cls/transactional`: the `@Transactional()` decorator used by
+  the central workflow. Brief §4 lists it.
+- `@nestjs-cls/transactional-adapter-drizzle-orm`: kept as a dep because
+  brief §4 lists it, even though this app uses a local sync adapter
+  for `better-sqlite3` (see above). Future apps that switch to libsql or
+  postgres can drop the custom adapter and use the official one.
+
 ### Added (milestone 5 — core modules)
 
 - `src/modules/organizations/` (repository, service, router, module):
