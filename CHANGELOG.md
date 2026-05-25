@@ -6,6 +6,35 @@ added them.
 
 ## [Unreleased]
 
+### Added (milestone 7 — outbox worker process)
+
+- `scripts/start-worker.ts`: long-running worker process. Boots a Nest
+  application context (no HTTP), resolves `OutboxClaimer` from DI, runs
+  `tick()` on an interval (default 2s, configurable via `OUTBOX_POLL_MS`),
+  and traps `SIGTERM`/`SIGINT` for graceful shutdown — the in-flight tick
+  drains, the Nest container closes, then the process exits cleanly.
+  Errors from individual ticks are logged and the loop continues; per-event
+  retry/backoff/failure is the claimer's responsibility (from milestone 6).
+- The loop body is exported as `runWorkerLoop(claimer, { pollIntervalMs,
+  claimer, signal })` so tests can drive it with an `AbortController`
+  without spawning a child process.
+- `src/config/env.ts` exposes a typed `outbox` block with
+  `pollIntervalMs`, `batchSize`, `stuckTimeoutMs`, and `workerInstanceId`
+  read from `OUTBOX_POLL_MS`, `OUTBOX_BATCH_SIZE`,
+  `OUTBOX_STUCK_TIMEOUT_MS`, and `OUTBOX_WORKER_ID`. Defaults match brief
+  §8 (poll 2s, stuck timeout 60s, batch 32).
+- `npm run start:worker` script entry point.
+- Tests in `test/integration/outbox-worker.spec.ts`:
+  - **drain**: a freshly-invited user's `user.invited` outbox row flips to
+    `completed`, claimed by the configured worker id, and
+    `FakeEmailTransport` records exactly one matching email.
+  - **prompt abort**: with a 30s poll interval, an `AbortController.abort()`
+    mid-wait returns the loop within 5 seconds (asserted), confirming the
+    delay is signal-cancellable.
+  - **tick failure resilience**: a synthetic throw from the first
+    `claimer.tick()` is logged and the loop keeps polling; on the next
+    iteration `tick()` runs normally.
+
 ### Added (milestone 6 — audit log + outbox + transactional workflow)
 
 - `nestjs-cls`, `@nestjs-cls/transactional`, and

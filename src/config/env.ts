@@ -8,6 +8,12 @@ export interface AppEnv {
   trpcPath: string;
   authSecret: string;
   authTtlSeconds: number;
+  outbox: {
+    pollIntervalMs: number;
+    batchSize: number;
+    stuckTimeoutMs: number;
+    workerInstanceId: string | undefined;
+  };
 }
 
 const MIN_AUTH_SECRET_LENGTH = 32;
@@ -46,6 +52,16 @@ function readDatabaseUrl(): string {
   );
 }
 
+function readIntFromEnv(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (!raw) return fallback;
+  const parsed = Number.parseInt(raw, 10);
+  if (Number.isNaN(parsed) || parsed <= 0) {
+    throw new Error(`Invalid ${name}: ${raw}`);
+  }
+  return parsed;
+}
+
 export function loadEnv(): AppEnv {
   const nodeEnv = (process.env.NODE_ENV ?? 'development') as AppEnv['nodeEnv'];
   return {
@@ -55,5 +71,11 @@ export function loadEnv(): AppEnv {
     trpcPath: process.env.TRPC_PATH ?? '/trpc',
     authSecret: readAuthSecret(nodeEnv),
     authTtlSeconds: Number.parseInt(process.env.AUTH_TTL_SECONDS ?? '3600', 10),
+    outbox: {
+      pollIntervalMs: readIntFromEnv('OUTBOX_POLL_MS', 2_000),
+      batchSize: readIntFromEnv('OUTBOX_BATCH_SIZE', 32),
+      stuckTimeoutMs: readIntFromEnv('OUTBOX_STUCK_TIMEOUT_MS', 60_000),
+      workerInstanceId: process.env.OUTBOX_WORKER_ID,
+    },
   };
 }
