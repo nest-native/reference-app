@@ -6,6 +6,41 @@ added them.
 
 ## [Unreleased]
 
+### Added (milestone 8 — polish)
+
+- `client-smoke/`: a typed tRPC client workspace per brief §5. Imports
+  `AppRouter` from `src/@generated/server.ts`, boots the app in-process,
+  and exercises one query (`ping`), one mutation (`auth.login`), and one
+  auth-protected query (`users.me`) against a live local server using
+  `@trpc/client`'s `createTRPCClient` + `httpBatchLink`. Own
+  `tsconfig.json` (no workspaces). `npm run client-smoke` runs it;
+  `npm run client-smoke:typecheck` is now part of `npm run ci`.
+- `Dockerfile`: multi-stage production build. Stage 1 installs full deps
+  (including a C++ toolchain so `better-sqlite3`'s prebuild fallback
+  succeeds in slim images), generates the tRPC schema, runs `tsc`. Stage
+  2 ships `dist/` + production deps + migrations + scripts on a slim
+  Node base, with a `/data` volume for SQLite persistence. Default
+  command runs the API; override `node dist/scripts/start-worker.js`
+  to run the outbox worker off the same image.
+- `docker-compose.yml`: two-process stack (api + worker) on a shared
+  SQLite volume with an HTTP healthcheck and a 15s `stop_grace_period`
+  on the worker. A Postgres service section is committed as a recipe
+  (commented) for the production swap path described in
+  `docs/architecture.md`.
+- `docs/architecture.md`: one-sitting tour — module graph, request
+  lifecycle (auth middleware + tRPC + request-scoped DI), the central
+  `@Transactional` workflow, why the custom `SyncDrizzleTransactionalAdapter`
+  exists, outbox flow, worker process, layout map, test map, production
+  deployment recipe.
+- README finalized to reflect the v0.1 state across all eight
+  milestones; status badge bumped from `bootstrap` to `v0.1`.
+
+### Runtime dependency justifications (milestone 8)
+
+- `@trpc/client`: devDep, consumed only by `client-smoke/`. Not pulled
+  into the app's runtime bundle. Required to demonstrate that the
+  generated `AppRouter` is consumable by a typed client.
+
 ### Added (milestone 7 — outbox worker process)
 
 - `scripts/start-worker.ts`: long-running worker process. Boots a Nest

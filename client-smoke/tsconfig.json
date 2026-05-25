@@ -1,0 +1,9 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "declaration": false,
+    "ignoreDeprecations": "6.0"
+  },
+  "include": ["./client.ts", "../src/@generated/server.ts"]
+}

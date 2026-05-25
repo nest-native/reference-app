@@ -1,0 +1,84 @@
+# Local stack for nest-native/reference-app. Two flavors:
+#
+#   SQLite (default):       docker compose up
+#                           Single host, persistent volume, no extra service.
+#
+#   Postgres (recipe):      uncomment the `postgres` service and the
+#                           DATABASE_URL line under `api:`/`worker:`. The app
+#                           currently uses better-sqlite3 in `src/database/`,
+#                           so wiring Postgres also requires swapping
+#                           `drizzle-orm/better-sqlite3` for `drizzle-orm/pg`
+#                           (see docs/architecture.md).
+#
+# Stack:
+#   - api     → exposes :3000, runs migrations on start
+#   - worker  → long-running outbox poller, no port exposed
+#   - (postgres → optional)
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: reference-app:latest
+    ports:
+      - "3000:3000"
+    volumes:
+      - reference-app-data:/data
+    environment:
+      DATABASE_URL: /data/app.db
+      # DATABASE_URL: postgres://app:app@postgres:5432/app
+      AUTH_SECRET: ${AUTH_SECRET:?set AUTH_SECRET (min 32 chars) in .env or shell}
+      AUTH_TTL_SECONDS: "3600"
+      PORT: "3000"
+      NODE_ENV: production
+    # Run migrations on container start, then boot the API.
+    command: >
+      sh -c "node -e \"require('./scripts/migrate.ts')\" 2>/dev/null
+             || npx tsx ./scripts/migrate.ts;
+             exec node dist/main.js"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    # depends_on:
+    #   postgres:
+    #     condition: service_healthy
+
+  worker:
+    image: reference-app:latest
+    depends_on:
+      api:
+        condition: service_healthy
+    volumes:
+      - reference-app-data:/data
+    environment:
+      DATABASE_URL: /data/app.db
+      # DATABASE_URL: postgres://app:app@postgres:5432/app
+      AUTH_SECRET: ${AUTH_SECRET:?set AUTH_SECRET (min 32 chars) in .env or shell}
+      OUTBOX_POLL_MS: "2000"
+      OUTBOX_BATCH_SIZE: "32"
+      OUTBOX_STUCK_TIMEOUT_MS: "60000"
+      NODE_ENV: production
+    command: ["node", "dist/scripts/start-worker.js"]
+    stop_grace_period: 15s
+
+  # postgres:
+  #   image: postgres:16-alpine
+  #   environment:
+  #     POSTGRES_USER: app
+  #     POSTGRES_PASSWORD: app
+  #     POSTGRES_DB: app
+  #   volumes:
+  #     - postgres-data:/var/lib/postgresql/data
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "pg_isready -U app"]
+  #     interval: 5s
+  #     timeout: 3s
+  #     retries: 5
+
+volumes:
+  reference-app-data:
+  # postgres-data:
