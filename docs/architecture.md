@@ -1,3 +1,9 @@
+---
+layout: default
+title: Architecture
+description: One-sitting tour of the nest-native reference app — module graph, request lifecycle, the central @Transactional workflow, the outbox, and the worker.
+---
+
 # Architecture
 
 This is a single-process Nest application (plus one optional sidecar

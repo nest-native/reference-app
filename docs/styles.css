@@ -344,3 +344,235 @@ main {
     grid-column: 1 / 3;
   }
 }
+
+/* ============================================================
+   Prose (Jekyll-rendered markdown content)
+   ============================================================ */
+
+.prose {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 16px 0 56px;
+  color: var(--text);
+  line-height: 1.65;
+  font-size: 1rem;
+}
+
+.prose h1,
+.prose h2,
+.prose h3,
+.prose h4 {
+  color: var(--text);
+  font-weight: 700;
+  letter-spacing: -0.005em;
+  line-height: 1.25;
+  margin: 2.2em 0 0.65em;
+}
+
+.prose > h1:first-child,
+.prose > h2:first-child {
+  margin-top: 12px;
+}
+
+.prose h1 {
+  font-size: clamp(1.9rem, 3.4vw, 2.4rem);
+}
+
+.prose h2 {
+  font-size: 1.5rem;
+  padding-bottom: 0.35em;
+  border-bottom: 1px solid var(--line);
+}
+
+.prose h3 {
+  font-size: 1.18rem;
+  color: var(--text);
+}
+
+.prose h4 {
+  font-size: 1rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.prose p {
+  margin: 0 0 1.05em;
+  color: var(--text);
+}
+
+.prose a {
+  color: var(--teal);
+  text-decoration: none;
+  border-bottom: 1px solid rgba(64, 214, 196, 0.35);
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.prose a:hover {
+  color: var(--text);
+  border-bottom-color: var(--text);
+}
+
+.prose ul,
+.prose ol {
+  margin: 0 0 1.05em;
+  padding-left: 1.4em;
+}
+
+.prose li {
+  margin: 0.35em 0;
+}
+
+.prose li > p {
+  margin-bottom: 0.45em;
+}
+
+.prose ul li::marker {
+  color: var(--accent);
+}
+
+.prose ol li::marker {
+  color: var(--teal);
+}
+
+.prose strong {
+  color: var(--text);
+  font-weight: 700;
+}
+
+.prose em {
+  color: var(--text);
+}
+
+.prose blockquote {
+  margin: 1.2em 0;
+  padding: 0.6em 1em;
+  border-left: 3px solid var(--accent);
+  background: var(--accent-soft);
+  color: var(--muted);
+  border-radius: 0 8px 8px 0;
+}
+
+.prose blockquote p {
+  margin: 0;
+}
+
+.prose hr {
+  border: none;
+  border-top: 1px solid var(--line);
+  margin: 2em 0;
+}
+
+.prose code {
+  font-family: "JetBrains Mono", "Fira Code", ui-monospace, SFMono-Regular,
+    Menlo, monospace;
+  font-size: 0.88em;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  padding: 0.12em 0.45em;
+  border-radius: 6px;
+  color: var(--text);
+}
+
+.prose a code {
+  color: inherit;
+}
+
+.prose pre {
+  font-family: "JetBrains Mono", "Fira Code", ui-monospace, SFMono-Regular,
+    Menlo, monospace;
+  background: #0a0e13;
+  border: 1px solid var(--line);
+  color: var(--text);
+  padding: 16px 20px;
+  border-radius: 12px;
+  overflow-x: auto;
+  font-size: 0.88rem;
+  line-height: 1.55;
+  margin: 1.2em 0;
+  box-shadow: var(--shadow);
+}
+
+.prose pre code {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  font-size: inherit;
+  color: inherit;
+}
+
+/* Jekyll's rouge wraps code blocks in this nested structure */
+.prose .highlight,
+.prose .highlighter-rouge {
+  margin: 1.2em 0;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.prose .highlight pre,
+.prose .highlighter-rouge pre {
+  margin: 0;
+  box-shadow: none;
+  border-radius: 12px;
+}
+
+.prose table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.2em 0;
+  font-size: 0.95rem;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.prose thead {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.prose th,
+.prose td {
+  text-align: left;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+}
+
+.prose th {
+  color: var(--text);
+  font-weight: 700;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.prose tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.prose tbody tr:hover {
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.prose img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 8px;
+}
+
+@media (max-width: 720px) {
+  .prose {
+    font-size: 0.96rem;
+  }
+
+  .prose pre {
+    padding: 12px 14px;
+    font-size: 0.82rem;
+  }
+
+  .prose table {
+    display: block;
+    overflow-x: auto;
+  }
+}
