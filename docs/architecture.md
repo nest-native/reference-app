@@ -18,6 +18,70 @@ transactional outbox, and a typed tRPC client.
 This document is meant to be read top-to-bottom in one focused sitting.
 Each section answers one question.
 
+## The problem this exists to solve
+
+If you're starting a new NestJS backend and you've picked Drizzle for the
+database and tRPC for the API layer, you have a **composition problem**.
+Each library is well-documented in isolation — but a real backend is the
+composition, and the composition is where most of the design decisions
+live. Library docs cover their slice; nobody covers the seams.
+
+This app is the seams, written out. Specifically, it commits to a
+decision for each of the following questions that an adopter would
+otherwise have to answer from scratch:
+
+- **How does "current user" and "current organization" thread through
+  everything?** Express middleware sets `req.authContext` on the way in.
+  That value reaches a tRPC procedure via
+  `TrpcModule.forRoot({ createContext })`, reaches a guard via
+  `context.getArgs()[1]`, and reaches a service three calls deep via a
+  request-scoped `CURRENT_USER` / `CURRENT_ORGANIZATION` provider in
+  `RequestContextModule`. One auth middleware, four consumers, one
+  shape. See [Request lifecycle](#request-lifecycle) and
+  [Authentication](#authentication).
+
+- **How does a transaction span services?** "Insert a user, insert a
+  membership, insert a project, write an audit row, enqueue a side
+  effect" is one business operation. Splitting it across services would
+  normally either leak the tx through every method signature or leak
+  the lack of one. `@nestjs-cls/transactional` keeps the active
+  transaction in CLS, and every repo that participates injects the
+  Drizzle client via `@InjectTransaction()` so it transparently uses
+  the tx client inside a `@Transactional()` method and the raw client
+  outside one. **There is one trap with `better-sqlite3`**: the
+  official Drizzle adapter wraps the inner callback in `async`, which
+  commits an empty tx against synchronous sqlite. This app ships a
+  small sync adapter to avoid that — see
+  [Why a custom SyncDrizzleTransactionalAdapter](#why-a-custom-syncdrizzletransactionaladapter).
+
+- **How do you send a post-commit side effect without losing it?** You
+  can't send the email inside the transaction (rollback → ghost email)
+  and you can't send it from the request handler after the transaction
+  either (process crashes → lost email). The transactional outbox is
+  the answer. Implementing it correctly means getting the claim
+  atomicity, idempotency, exponential backoff, and stuck-claim recovery
+  right. See [Outbox](#outbox) and [The worker process](#the-worker-process).
+
+- **How do you keep the typed-client contract honest?** tRPC promises
+  end-to-end type safety, but only if the generated `AppRouter` actually
+  round-trips into a real client at CI time. This app's
+  [`client-smoke/`](https://github.com/nest-native/reference-app/blob/main/client-smoke/client.ts)
+  workspace imports the generated `AppRouter`, boots the app in-process,
+  and runs one query + one mutation + one auth-protected call against a
+  live local server. `client-smoke:typecheck` is in `npm run ci`.
+
+- **What does the boring scaffolding actually look like?** ESLint flat
+  config with a cognitive-complexity ceiling of 15, `drizzle-kit`
+  forward-only migrations, `node:test` + `c8` coverage, an `npm run ci`
+  chain (`typecheck → lint → complexity → tests → audit → build`), a
+  Dockerfile that runs both API and worker off the same image. All of
+  it is in the repo from milestone 1, not added as an afterthought.
+
+The point isn't that these are the only good answers. The point is that
+**this app commits to specific answers**, so you can disagree with any
+one of them and swap it out — but you're disagreeing with something
+concrete rather than designing in a vacuum.
+
 ## Module graph
 
 ```
