@@ -1,4 +1,5 @@
 import { auditEvents } from './audit-events';
+import { inboxEvents } from './inbox-events';
 import { memberships } from './memberships';
 import { organizations } from './organizations';
 import { outboxEvents } from './outbox-events';
@@ -12,16 +13,20 @@ export const schema = {
   projects,
   auditEvents,
   outboxEvents,
+  inboxEvents,
 };
 
 export {
   auditEvents,
+  inboxEvents,
   memberships,
   organizations,
   outboxEvents,
   projects,
   users,
 };
+export type { InboxEvent, InboxStatus, NewInboxEvent } from './inbox-events';
+export { INBOX_STATUSES } from './inbox-events';
 export type { AuditEvent, NewAuditEvent } from './audit-events';
 export type {
   Membership,

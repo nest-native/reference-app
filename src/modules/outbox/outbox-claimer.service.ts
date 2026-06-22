@@ -7,7 +7,12 @@ import {
   type OutboxEvent,
   outboxEvents,
 } from '../../database/schema';
-import { OutboxRegistry } from './outbox-registry.service';
+import {
+  OUTBOX_TRANSPORT,
+  type OutboxTransport,
+  PermanentError,
+  RetryableError,
+} from './outbox-transport';
 
 export interface ClaimerConfig {
   workerInstanceId: string;
@@ -38,7 +43,7 @@ export class OutboxClaimer {
 
   constructor(
     @InjectDrizzle() private readonly db: AppDatabase,
-    @Inject(OutboxRegistry) private readonly registry: OutboxRegistry,
+    @Inject(OUTBOX_TRANSPORT) private readonly transport: OutboxTransport,
   ) {}
 
   async tick(overrides: Partial<ClaimerConfig> = {}): Promise<TickReport> {
@@ -106,20 +111,29 @@ export class OutboxClaimer {
     event: OutboxEvent,
     cfg: ClaimerConfig,
   ): Promise<'completed' | 'retried' | 'failed'> {
-    const handler = this.registry.get(event.topic);
-    if (!handler) {
-      return this.markFailed(event, `no handler registered for topic "${event.topic}"`);
-    }
-
     try {
-      const result = await handler(event.payload);
-      if (result === 'completed') {
-        this.markCompleted(event);
-        return 'completed';
-      }
-      return this.retry(event, cfg, result.retryAfterMs);
+      await this.transport.publish({
+        id: event.id,
+        topic: event.topic,
+        payload: event.payload,
+        idempotencyKey: event.idempotencyKey ?? undefined,
+      });
+      this.markCompleted(event);
+      return 'completed';
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
+      // A permanent failure can never succeed on retry (no handler, bad
+      // payload) — fail it now instead of burning attempts.
+      if (error instanceof PermanentError) {
+        return this.markFailed(event, message);
+      }
+      // A retryable failure schedules another attempt; the transport may
+      // supply its own delay (retry-after), otherwise fall back to backoff.
+      if (error instanceof RetryableError) {
+        const delay = error.delayMs ?? this.backoff(event.attempts, cfg);
+        return this.retry(event, cfg, delay, message);
+      }
+      // Any other error: retry with backoff until maxAttempts, then fail.
       if (event.attempts + 1 >= event.maxAttempts) {
         return this.markFailed(event, message);
       }

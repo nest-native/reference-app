@@ -1,25 +1,13 @@
 import { Inject, Injectable, type OnModuleInit } from '@nestjs/common';
 import {
+  isUserInvitedPayload,
   OUTBOX_TOPIC_USER_INVITED,
-  type UserInvitedPayload,
 } from './outbox.constants';
 import { FakeEmailTransport } from './fake-email-transport.service';
 import {
   type OutboxHandlerResult,
   OutboxRegistry,
 } from './outbox-registry.service';
-
-function isUserInvitedPayload(value: unknown): value is UserInvitedPayload {
-  if (typeof value !== 'object' || value === null) return false;
-  const p = value as Partial<UserInvitedPayload>;
-  return (
-    typeof p.invitedEmail === 'string' &&
-    typeof p.invitedUserId === 'number' &&
-    typeof p.invitedByUserId === 'number' &&
-    typeof p.orgId === 'number' &&
-    typeof p.projectId === 'number'
-  );
-}
 
 @Injectable()
 export class UserInvitedHandler implements OnModuleInit {

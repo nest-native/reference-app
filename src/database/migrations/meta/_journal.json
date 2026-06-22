@@ -15,6 +15,13 @@
       "when": 1779595495861,
       "tag": "0001_add_core_schema",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1782168825938,
+      "tag": "0002_add_inbox_events",
+      "breakpoints": true
     }
   ]
 }

@@ -11,3 +11,22 @@ export interface UserInvitedPayload {
   orgId: number;
   projectId: number;
 }
+
+/**
+ * Runtime type guard for {@link UserInvitedPayload}. Single-sourced here so the
+ * producer-side handler and the consumer-side inbox validate the `user.invited`
+ * contract against the same predicate — the wire shape is defined once.
+ */
+export function isUserInvitedPayload(
+  value: unknown,
+): value is UserInvitedPayload {
+  if (typeof value !== 'object' || value === null) return false;
+  const p = value as Partial<UserInvitedPayload>;
+  return (
+    typeof p.invitedEmail === 'string' &&
+    typeof p.invitedUserId === 'number' &&
+    typeof p.invitedByUserId === 'number' &&
+    typeof p.orgId === 'number' &&
+    typeof p.projectId === 'number'
+  );
+}
