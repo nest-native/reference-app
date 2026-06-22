@@ -6,6 +6,16 @@ added them.
 
 ## [Unreleased]
 
+### Changed — official better-sqlite3 transaction support
+
+- Bumped `@nestjs-cls/transactional-adapter-drizzle-orm` to `^1.3.0` and
+  removed the local `SyncDrizzleTransactionalAdapter` workaround. The
+  official adapter now supports synchronous Drizzle drivers via its
+  `transactionMode` option (defaults to `'auto'`, detects `better-sqlite3`
+  and runs in sync mode) — upstreamed in
+  [nestjs-cls#572](https://github.com/Papooch/nestjs-cls/pull/572).
+  `AppModule` now wires the official `TransactionalAdapterDrizzleOrm`.
+
 ### Added — landing page on nest-native.dev/reference-app
 
 - `docs/index.html` and `docs/styles.css` mirror the org landing site's

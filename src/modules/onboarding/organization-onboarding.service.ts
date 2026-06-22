@@ -47,7 +47,9 @@ export class OrganizationOnboardingService {
 
   // Declared `Promise<InviteUserResult>` so callers can `await` naturally:
   // @Transactional() always returns a Promise even if the inner body is
-  // synchronous (which it must be — see SyncDrizzleTransactionalAdapter).
+  // synchronous (which it must be on better-sqlite3 — the official
+  // @nestjs-cls/transactional-adapter-drizzle-orm auto-detects the
+  // synchronous sqlite driver and runs the transaction in sync mode).
   // The cast on the return value below bridges the sync body to the Promise
   // signature the decorator imposes on the caller's view of the method.
   @Transactional()

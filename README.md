@@ -61,7 +61,6 @@ src/
   app.module.ts                 Root module + ClsPluginTransactional wiring
   config/env.ts                 loadEnv() — single source of truth for env
   database/                     DrizzleModule.forRoot wiring + schema + migrations
-                                + SyncDrizzleTransactionalAdapter for better-sqlite3
   auth/                         JWT, scrypt, AuthService, middleware, AuthGuard,
                                 @CurrentUser / @CurrentOrganization, AuthRouter
   context/                      Request-scoped CURRENT_USER / CURRENT_ORGANIZATION
@@ -122,9 +121,10 @@ AUTH_SECRET=… DATABASE_URL=./reference-app.db npm run start:worker
 - `nest-trpc-native`: `TrpcModule.forRoot` with `createContext`, `@Router`,
   `@Query`/`@Mutation`, `@Input`/`@TrpcContext`, generated `AppRouter`,
   guards/interceptors integration.
-- `@nestjs-cls/transactional` with a [custom sync Drizzle
-  adapter](src/database/sync-drizzle-transactional-adapter.ts) for
-  better-sqlite3.
+- `@nestjs-cls/transactional` with the official
+  `@nestjs-cls/transactional-adapter-drizzle-orm` (>=1.3.0), which
+  auto-detects better-sqlite3's synchronous driver and runs the transaction
+  in sync mode.
 - Multi-tenant patterns: request-scoped `CURRENT_USER` /
   `CURRENT_ORGANIZATION` providers populated by an Express middleware that
   decodes a JWT; tRPC procedures consume the same `authContext` through

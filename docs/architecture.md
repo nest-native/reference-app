@@ -49,10 +49,10 @@ otherwise have to answer from scratch:
   Drizzle client via `@InjectTransaction()` so it transparently uses
   the tx client inside a `@Transactional()` method and the raw client
   outside one. **There is one trap with `better-sqlite3`**: the
-  official Drizzle adapter wraps the inner callback in `async`, which
-  commits an empty tx against synchronous sqlite. This app ships a
-  small sync adapter to avoid that — see
-  [Why a custom SyncDrizzleTransactionalAdapter](#why-a-custom-syncdrizzletransactionaladapter).
+  driver is synchronous, so the `@Transactional()` method must be too —
+  the official adapter (>=1.3.0) auto-detects this and runs the
+  transaction in sync mode. See
+  [Synchronous better-sqlite3 transactions](#synchronous-better-sqlite3-transactions).
 
 - **How do you send a post-commit side effect without losing it?** You
   can't send the email inside the transaction (rollback → ghost email)
@@ -211,29 +211,34 @@ inviteUser(input): Promise<Result> {
 
 The whole method runs inside one SQLite transaction because:
 
-- `AppModule` registers `ClsPluginTransactional` with our
-  `SyncDrizzleTransactionalAdapter`.
+- `AppModule` registers `ClsPluginTransactional` with the official
+  `@nestjs-cls/transactional-adapter-drizzle-orm`.
 - Every repo/service used inside the method injects the Drizzle client via
   `@InjectTransaction()` (the CLS proxy) instead of `@InjectDrizzle()` (the
   raw client). When the `@Transactional()` decorator enters the wrapper,
   the proxy resolves to the per-tx client; outside the wrapper it resolves
   to the raw client. The repo never sees the difference.
 
-### Why a custom SyncDrizzleTransactionalAdapter
+### Synchronous better-sqlite3 transactions
 
-The official `@nestjs-cls/transactional-adapter-drizzle-orm` wraps the
-inner Drizzle callback in `async`, which works for libsql and Postgres but
-silently breaks `better-sqlite3` — its `client.transaction(fn)` is
-synchronous and treats the async callback's immediately-returned `Promise`
-as a successful sync return, so it commits an empty tx and the actual
-writes happen *after* commit (against a closed tx).
+`better-sqlite3` is a **synchronous** driver: its `client.transaction(fn)`
+runs `fn` synchronously and rejects a callback that returns a `Promise` (an
+async wrapper would commit an empty tx and run the writes *after* commit,
+against a closed tx). So a `@Transactional()` method on `better-sqlite3`
+must itself be synchronous — no `async`, no `await`.
 
-Our adapter
-([`src/database/sync-drizzle-transactional-adapter.ts`](https://github.com/nest-native/reference-app/blob/main/src/database/sync-drizzle-transactional-adapter.ts))
-keeps the inner callback synchronous and still returns a Promise from
-`wrapWithTransaction` to satisfy the plugin contract. If you switch the app
-to libsql or Postgres later, swap back to the official adapter — no other
-code has to change.
+The official `@nestjs-cls/transactional-adapter-drizzle-orm` (>=1.3.0)
+handles this automatically: its `transactionMode` defaults to `'auto'`,
+detects the synchronous driver, and runs the transaction in sync mode
+(force it with `transactionMode: 'sync'` if auto-detection ever misses).
+Async drivers — libsql, Postgres, MySQL — keep working unchanged, so no
+code has to change when you switch.
+
+> Historical note: before 1.3.0 the official adapter only supported async
+> drivers, so this app shipped a ~30-line `SyncDrizzleTransactionalAdapter`
+> workaround. That fix is now upstream
+> ([nestjs-cls#572](https://github.com/Papooch/nestjs-cls/pull/572)) and the
+> workaround has been removed.
 
 ### Rollback safety, exactly-once delivery
 
@@ -291,7 +296,7 @@ same image (see `docker-compose.yml`).
 | `main.ts` | Nest bootstrap — listens on `PORT` |
 | `app.module.ts` | Root module: imports + ClsPluginTransactional wiring |
 | `config/env.ts` | `loadEnv()` — single source of truth for env vars |
-| `database/` | `DatabaseModule` (DrizzleModule.forRoot wiring), schema, migrations, custom sync CLS adapter |
+| `database/` | `DatabaseModule` (DrizzleModule.forRoot wiring), schema, migrations |
 | `auth/` | JWT helpers, scrypt password helpers, `AuthService`, middleware, `AuthGuard`, `@CurrentUser`/`@CurrentOrganization` decorators, `AuthRouter` |
 | `context/` | `RequestContextModule` — Nest request-scoped `CURRENT_USER` / `CURRENT_ORGANIZATION` providers backed by `req.authContext` |
 | `health/` | `/health` REST controller |
