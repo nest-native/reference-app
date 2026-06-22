@@ -1,6 +1,19 @@
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+export interface KafkaEnv {
+  /** True when KAFKA_BROKERS is set — the opt-in profile switch. */
+  enabled: boolean;
+  /** Broker bootstrap addresses (comma-split from KAFKA_BROKERS). */
+  brokers: string[];
+  /** Client identifier reported to the broker. */
+  clientId: string;
+  /** Consumer group the inbox consumers join. */
+  groupId: string;
+  /** Prefix applied to every topic, so one cluster can host many environments. */
+  topicPrefix: string;
+}
+
 export interface AppEnv {
   nodeEnv: 'development' | 'test' | 'production';
   port: number;
@@ -14,6 +27,10 @@ export interface AppEnv {
     stuckTimeoutMs: number;
     workerInstanceId: string | undefined;
   };
+  // Optional: present (and `enabled`) only when KAFKA_BROKERS is set. With it
+  // unset the app stays in-process and this block is undefined — Kafka off is
+  // byte-for-byte the default behaviour.
+  kafka?: KafkaEnv;
 }
 
 const MIN_AUTH_SECRET_LENGTH = 32;
@@ -62,8 +79,31 @@ function readIntFromEnv(name: string, fallback: number): number {
   return parsed;
 }
 
+// KAFKA_BROKERS is the single opt-in switch: set it and the Kafka profile turns
+// on (the app publishes the outbox to Kafka and runs the inbox consumers);
+// leave it unset and this returns undefined so the app stays in-process.
+function readKafka(): KafkaEnv | undefined {
+  const brokersRaw = process.env.KAFKA_BROKERS;
+  if (!brokersRaw) return undefined;
+  const brokers = brokersRaw
+    .split(',')
+    .map((b) => b.trim())
+    .filter((b) => b.length > 0);
+  if (brokers.length === 0) {
+    throw new Error('KAFKA_BROKERS is set but contains no broker addresses');
+  }
+  return {
+    enabled: true,
+    brokers,
+    clientId: process.env.KAFKA_CLIENT_ID ?? 'reference-app',
+    groupId: process.env.KAFKA_GROUP_ID ?? 'reference-app',
+    topicPrefix: process.env.KAFKA_TOPIC_PREFIX ?? '',
+  };
+}
+
 export function loadEnv(): AppEnv {
   const nodeEnv = (process.env.NODE_ENV ?? 'development') as AppEnv['nodeEnv'];
+  const kafka = readKafka();
   return {
     nodeEnv,
     port: readPort(),
@@ -77,5 +117,6 @@ export function loadEnv(): AppEnv {
       stuckTimeoutMs: readIntFromEnv('OUTBOX_STUCK_TIMEOUT_MS', 60_000),
       workerInstanceId: process.env.OUTBOX_WORKER_ID,
     },
+    ...(kafka ? { kafka } : {}),
   };
 }

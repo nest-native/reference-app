@@ -1,7 +1,9 @@
-# Local stack for nest-native/reference-app. Two flavors:
+# Local stack for nest-native/reference-app. Three flavors:
 #
 #   SQLite (default):       docker compose up
 #                           Single host, persistent volume, no extra service.
+#                           Messaging stays in-process (outbox dispatches to
+#                           registered handlers); no Kafka.
 #
 #   Postgres (recipe):      uncomment the `postgres` service and the
 #                           DATABASE_URL line under `api:`/`worker:`. The app
@@ -10,10 +12,20 @@
 #                           `drizzle-orm/better-sqlite3` for `drizzle-orm/pg`
 #                           (see docs/architecture.md).
 #
+#   Kafka (recipe):         uncomment the `redpanda` service and the
+#                           KAFKA_BROKERS line under `api:`/`worker:`. Setting
+#                           KAFKA_BROKERS is the single opt-in switch: the outbox
+#                           claimer then publishes to Kafka and the inbox
+#                           consumers subscribe (the Reliable Messaging Pair).
+#                           Redpanda is a single-binary, Kafka-API-compatible
+#                           broker — no ZooKeeper. With it commented out the
+#                           default stack stays SQLite + in-process.
+#
 # Stack:
-#   - api     → exposes :3000, runs migrations on start
-#   - worker  → long-running outbox poller, no port exposed
+#   - api      → exposes :3000, runs migrations on start
+#   - worker   → long-running outbox poller, no port exposed
 #   - (postgres → optional)
+#   - (redpanda → optional, Kafka API)
 
 services:
   api:
@@ -28,6 +40,9 @@ services:
     environment:
       DATABASE_URL: /data/app.db
       # DATABASE_URL: postgres://app:app@postgres:5432/app
+      # KAFKA_BROKERS: redpanda:9092          # opt-in: turns on the Kafka profile
+      # KAFKA_TOPIC_PREFIX: ""
+      # KAFKA_GROUP_ID: reference-app
       AUTH_SECRET: ${AUTH_SECRET:?set AUTH_SECRET (min 32 chars) in .env or shell}
       AUTH_TTL_SECONDS: "3600"
       PORT: "3000"
@@ -57,6 +72,9 @@ services:
     environment:
       DATABASE_URL: /data/app.db
       # DATABASE_URL: postgres://app:app@postgres:5432/app
+      # KAFKA_BROKERS: redpanda:9092          # opt-in: claimer publishes to Kafka
+      # KAFKA_TOPIC_PREFIX: ""
+      # KAFKA_GROUP_ID: reference-app
       AUTH_SECRET: ${AUTH_SECRET:?set AUTH_SECRET (min 32 chars) in .env or shell}
       OUTBOX_POLL_MS: "2000"
       OUTBOX_BATCH_SIZE: "32"
@@ -79,6 +97,31 @@ services:
   #     timeout: 3s
   #     retries: 5
 
+  # redpanda:
+  #   # Single-binary, Kafka-API-compatible broker (no ZooKeeper). Uncomment this
+  #   # plus the KAFKA_BROKERS lines under api/worker to run the Reliable
+  #   # Messaging Pair: the outbox publishes here and the inbox consumers
+  #   # subscribe. `redpanda:9092` is the in-network listener the app connects to.
+  #   image: redpandadata/redpanda:v24.2.7
+  #   command:
+  #     - redpanda
+  #     - start
+  #     - --smp=1
+  #     - --overprovisioned
+  #     - --node-id=0
+  #     - --kafka-addr=PLAINTEXT://0.0.0.0:9092,EXTERNAL://0.0.0.0:19092
+  #     - --advertise-kafka-addr=PLAINTEXT://redpanda:9092,EXTERNAL://localhost:19092
+  #   ports:
+  #     - "19092:19092"   # host listener: KAFKA_BROKERS=localhost:19092 for the gated e2e
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "rpk cluster health | grep -q 'Healthy:.*true'"]
+  #     interval: 5s
+  #     timeout: 3s
+  #     retries: 10
+  #   volumes:
+  #     - redpanda-data:/var/lib/redpanda/data
+
 volumes:
   reference-app-data:
   # postgres-data:
+  # redpanda-data:

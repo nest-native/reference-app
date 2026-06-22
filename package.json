@@ -44,11 +44,15 @@
     "better-sqlite3": "12.11.1",
     "drizzle-orm": "0.45.2",
     "@nest-native/drizzle": "^0.3.2",
+    "@nest-native/kafka": "^0.1.1",
     "@nest-native/trpc": "^0.5.0",
     "nestjs-cls": "^6.2.1",
     "reflect-metadata": "0.2.2",
     "rxjs": "7.8.2",
     "zod": "4.4.3"
+  },
+  "optionalDependencies": {
+    "@confluentinc/kafka-javascript": "^1.9.0"
   },
   "devDependencies": {
     "@trpc/client": "^11.18.0",
