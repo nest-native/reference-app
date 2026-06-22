@@ -45,7 +45,7 @@
     "drizzle-orm": "0.45.2",
     "nest-drizzle-native": "0.2.1",
     "nest-trpc-native": "^0.4.3",
-    "nestjs-cls": "^6.2.0",
+    "nestjs-cls": "^6.2.1",
     "reflect-metadata": "0.2.2",
     "rxjs": "7.8.2",
     "zod": "4.4.3"
