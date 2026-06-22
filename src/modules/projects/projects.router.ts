@@ -1,5 +1,5 @@
 import { Inject, UseGuards } from '@nestjs/common';
-import { Input, Mutation, Query, Router } from 'nest-trpc-native';
+import { Input, Mutation, Query, Router } from '@nest-native/trpc';
 import { z } from 'zod';
 import { AuthGuard } from '../../auth/auth.guard';
 import { ProjectsService } from './projects.service';

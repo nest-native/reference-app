@@ -2,7 +2,7 @@
   "name": "nest-native-reference-app",
   "version": "0.0.1",
   "private": true,
-  "description": "Production-shaped reference app for the nest-native stack (nest-drizzle-native + nest-trpc-native)",
+  "description": "Production-shaped reference app for the nest-native stack (@nest-native/drizzle + @nest-native/trpc)",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/nest-native/reference-app.git"
@@ -43,8 +43,8 @@
     "@trpc/server": "11.18.0",
     "better-sqlite3": "12.11.1",
     "drizzle-orm": "0.45.2",
-    "nest-drizzle-native": "0.2.1",
-    "nest-trpc-native": "^0.4.3",
+    "@nest-native/drizzle": "^0.3.2",
+    "@nest-native/trpc": "^0.5.0",
     "nestjs-cls": "^6.2.1",
     "reflect-metadata": "0.2.2",
     "rxjs": "7.8.2",

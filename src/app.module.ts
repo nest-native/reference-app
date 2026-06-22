@@ -2,7 +2,7 @@ import { Module } from '@nestjs/common';
 import { ClsPluginTransactional } from '@nestjs-cls/transactional';
 import { TransactionalAdapterDrizzleOrm } from '@nestjs-cls/transactional-adapter-drizzle-orm';
 import { ClsModule } from 'nestjs-cls';
-import { getDrizzleClientToken } from 'nest-drizzle-native';
+import { getDrizzleClientToken } from '@nest-native/drizzle';
 import { AuthModule } from './auth/auth.module';
 import { RequestContextModule } from './context/request-context.module';
 import { DatabaseModule } from './database/database.module';
