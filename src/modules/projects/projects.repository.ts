@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectTransaction } from '@nestjs-cls/transactional';
 import { and, desc, eq } from 'drizzle-orm';
-import { DrizzleRepository } from 'nest-drizzle-native';
+import { DrizzleRepository } from '@nest-native/drizzle';
 import type { AppDatabase } from '../../database/database';
 import { type Project, projects } from '../../database/schema';
 

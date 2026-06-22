@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { DrizzleModule } from 'nest-drizzle-native';
+import { DrizzleModule } from '@nest-native/drizzle';
 import { AuthModule } from '../../auth/auth.module';
 import { RequestContextModule } from '../../context/request-context.module';
 import { OrganizationsRepository } from './organizations.repository';

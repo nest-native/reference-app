@@ -7,7 +7,7 @@ import { after, before, test } from 'node:test';
 import type { INestApplicationContext } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { eq } from 'drizzle-orm';
-import { getDrizzleClientToken } from 'nest-drizzle-native';
+import { getDrizzleClientToken } from '@nest-native/drizzle';
 import type { AppDatabase } from '../../src/database/database';
 import { outboxEvents } from '../../src/database/schema';
 import { OrganizationOnboardingService } from '../../src/modules/onboarding/organization-onboarding.service';

@@ -5,7 +5,7 @@ import type {
 } from './auth-context';
 
 // HTTP controllers only. tRPC procedures should use @TrpcContext('authContext')
-// — nest-trpc-native resolves only its own @Input/@TrpcContext param decorators.
+// — @nest-native/trpc resolves only its own @Input/@TrpcContext param decorators.
 export const CurrentOrganization = createParamDecorator(
   (
     _data,

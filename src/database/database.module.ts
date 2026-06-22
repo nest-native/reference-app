@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { DrizzleModule } from 'nest-drizzle-native';
+import { DrizzleModule } from '@nest-native/drizzle';
 import { loadEnv } from '../config/env';
 import { createDatabase } from './database';
 import { schema } from './schema';

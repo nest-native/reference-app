@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { TrpcModule } from 'nest-trpc-native';
+import { TrpcModule } from '@nest-native/trpc';
 import { join } from 'node:path';
 import { AuthModule } from '../auth/auth.module';
 import type {

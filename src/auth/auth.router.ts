@@ -1,5 +1,5 @@
 import { Inject, UseGuards } from '@nestjs/common';
-import { Input, Mutation, Query, Router, TrpcContext } from 'nest-trpc-native';
+import { Input, Mutation, Query, Router, TrpcContext } from '@nest-native/trpc';
 import { z } from 'zod';
 import type { AuthContext } from './auth-context';
 import { AuthGuard } from './auth.guard';

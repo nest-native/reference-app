@@ -1,7 +1,7 @@
 import { hostname } from 'node:os';
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { and, eq, inArray, lte, or, sql } from 'drizzle-orm';
-import { InjectDrizzle } from 'nest-drizzle-native';
+import { InjectDrizzle } from '@nest-native/drizzle';
 import type { AppDatabase } from '../../database/database';
 import {
   type OutboxEvent,

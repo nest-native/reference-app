@@ -1,6 +1,6 @@
 import { Inject, Injectable, UnauthorizedException } from '@nestjs/common';
 import { eq } from 'drizzle-orm';
-import { InjectDrizzle } from 'nest-drizzle-native';
+import { InjectDrizzle } from '@nest-native/drizzle';
 import type { AppDatabase } from '../database/database';
 import { memberships, users } from '../database/schema';
 import { AUTH_CONFIG, type AuthConfig } from './auth.config';
