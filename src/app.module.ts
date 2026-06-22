@@ -1,8 +1,8 @@
 import { Module } from '@nestjs/common';
 import { ClsPluginTransactional } from '@nestjs-cls/transactional';
+import { TransactionalAdapterDrizzleOrm } from '@nestjs-cls/transactional-adapter-drizzle-orm';
 import { ClsModule } from 'nestjs-cls';
 import { getDrizzleClientToken } from 'nest-drizzle-native';
-import { SyncDrizzleTransactionalAdapter } from './database/sync-drizzle-transactional-adapter';
 import { AuthModule } from './auth/auth.module';
 import { RequestContextModule } from './context/request-context.module';
 import { DatabaseModule } from './database/database.module';
@@ -23,7 +23,11 @@ import { AppTrpcModule } from './trpc/trpc.module';
       plugins: [
         new ClsPluginTransactional({
           imports: [DatabaseModule],
-          adapter: new SyncDrizzleTransactionalAdapter({
+          // better-sqlite3 is synchronous; the official adapter (>=1.3.0)
+          // auto-detects this (`transactionMode: 'auto'`) and runs the
+          // transaction callback in sync mode, so the @Transactional()
+          // methods in this app stay synchronous.
+          adapter: new TransactionalAdapterDrizzleOrm({
             drizzleInstanceToken: getDrizzleClientToken(),
           }),
           enableTransactionProxy: true,
