@@ -31,11 +31,11 @@ interface UserInvitedPayloadShape {
 }
 
 // Resolved in before() after the dynamic imports.
-type Mod = typeof import('@nest-native/kafka');
+type Mod = typeof import('@nest-native/kafka/testing');
 type Schema = typeof import('../../src/database/schema');
 
 let app: INestApplicationContext;
-let broker: import('@nest-native/kafka').InMemoryKafkaBroker;
+let broker: import('@nest-native/kafka/testing').InMemoryKafkaBroker;
 let inspect: import('../../src/database/database').AppDatabase;
 let kafka: Mod;
 let schema: Schema;
@@ -97,7 +97,7 @@ before(async () => {
   seededOrgId = seeded.org.id;
   seededAdminId = seeded.admin.id;
 
-  kafka = await import('@nest-native/kafka');
+  kafka = await import('@nest-native/kafka/testing');
   schema = await import('../../src/database/schema');
   drizzleOps = await import('drizzle-orm');
   const { Module } = await import('@nestjs/common');

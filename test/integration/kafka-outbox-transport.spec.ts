@@ -1,10 +1,8 @@
 import 'reflect-metadata';
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
-import {
-  createMockKafkaProducer,
-  KafkaProducerService,
-} from '@nest-native/kafka';
+import { KafkaProducerService } from '@nest-native/kafka';
+import { createMockKafkaProducer } from '@nest-native/kafka/testing';
 import { KafkaOutboxTransport } from '../../src/modules/outbox/kafka-outbox-transport';
 
 // Unit test: no live broker. The mock producer records every send() call, so we
