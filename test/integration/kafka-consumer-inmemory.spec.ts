@@ -112,9 +112,9 @@ before(async () => {
   const { AuditLogModule } = await import(
     '../../src/modules/audit-log/audit-log.module'
   );
-  const { InboxService } = await import(
-    '../../src/modules/inbox/inbox.service'
-  );
+  const { INBOX_STORE, InboxService } = await import('@nest-native/messaging');
+  const { SqliteInboxStore } = await import('@nest-native/messaging/sqlite');
+  const { KafkaInboxConsumer } = await import('@nest-native/messaging/kafka');
   const { UserInvitedConsumer } = await import(
     '../../src/modules/inbox/user-invited.consumer'
   );
@@ -140,7 +140,15 @@ before(async () => {
       AuditLogModule,
       kafka.KafkaTestModule.forRoot(),
     ],
-    providers: [InboxService, UserInvitedConsumer],
+    // Mirror MessagingModule's inbox wiring (the library's InboxService over the
+    // SQLite inbox store) plus the library's KafkaInboxConsumer engine, then the
+    // app's thin consumer shell on top.
+    providers: [
+      { provide: INBOX_STORE, useValue: new SqliteInboxStore() },
+      InboxService,
+      KafkaInboxConsumer,
+      UserInvitedConsumer,
+    ],
   })
   class KafkaInMemoryTestModule {}
 

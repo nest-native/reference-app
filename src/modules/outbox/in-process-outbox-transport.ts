@@ -1,11 +1,11 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { OutboxRegistry } from './outbox-registry.service';
 import {
   type OutboxMessage,
   type OutboxTransport,
   PermanentError,
   RetryableError,
-} from './outbox-transport';
+} from '@nest-native/messaging';
+import { OutboxRegistry } from './outbox-registry.service';
 
 /**
  * The default transport: dispatch the event to its in-process handler via the

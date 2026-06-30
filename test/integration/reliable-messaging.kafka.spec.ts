@@ -26,7 +26,7 @@ const dbPath = join(
 
 let app: INestApplicationContext;
 let onboarding: import('../../src/modules/onboarding/organization-onboarding.service').OrganizationOnboardingService;
-let claimer: import('../../src/modules/outbox/outbox-claimer.service').OutboxClaimer;
+let claimer: import('@nest-native/messaging').OutboxClaimer;
 let producer: import('@nest-native/kafka').KafkaProducerService;
 let inspect: import('../../src/database/database').AppDatabase;
 let schema: typeof import('../../src/database/schema');
@@ -55,9 +55,7 @@ before(async () => {
   const { OrganizationOnboardingService } = await import(
     '../../src/modules/onboarding/organization-onboarding.service'
   );
-  const { OutboxClaimer } = await import(
-    '../../src/modules/outbox/outbox-claimer.service'
-  );
+  const { OutboxClaimer } = await import('@nest-native/messaging');
   const { AppModule } = await import('../../src/app.module');
 
   app = await NestFactory.createApplicationContext(AppModule, { logger: false });

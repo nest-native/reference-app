@@ -1,6 +1,8 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { InjectTransaction, Transactional } from '@nestjs-cls/transactional';
 import { eq } from 'drizzle-orm';
+import { OutboxProducer } from '@nest-native/messaging';
+import type { SqliteOutboxStore } from '@nest-native/messaging/sqlite';
 import { hashPassword } from '../../auth/password';
 import type { AppDatabase } from '../../database/database';
 import {
@@ -11,7 +13,6 @@ import {
 } from '../../database/schema';
 import { AuditLogService } from '../audit-log/audit-log.service';
 import { MembershipsRepository } from '../memberships/memberships.repository';
-import { OutboxProducer } from '../outbox/outbox-producer.service';
 import {
   OUTBOX_TOPIC_USER_INVITED,
   type UserInvitedPayload,
@@ -42,7 +43,10 @@ export class OrganizationOnboardingService {
     private readonly memberships: MembershipsRepository,
     @Inject(ProjectsRepository) private readonly projects: ProjectsRepository,
     @Inject(AuditLogService) private readonly audit: AuditLogService,
-    @Inject(OutboxProducer) private readonly outbox: OutboxProducer,
+    // Typed with the SQLite store so `enqueue` returns the row synchronously
+    // (callable inside this synchronous @Transactional body).
+    @Inject(OutboxProducer)
+    private readonly outbox: OutboxProducer<SqliteOutboxStore>,
   ) {}
 
   // Declared `Promise<InviteUserResult>` so callers can `await` naturally:

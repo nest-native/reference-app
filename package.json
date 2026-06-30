@@ -45,6 +45,7 @@
     "drizzle-orm": "0.45.2",
     "@nest-native/drizzle": "^0.3.2",
     "@nest-native/kafka": "^0.2.0",
+    "@nest-native/messaging": "file:/home/rodrigo/Proj/oss/nest-native-messaging-0.1.0.tgz",
     "@nest-native/trpc": "^0.5.0",
     "nestjs-cls": "^6.2.1",
     "reflect-metadata": "0.2.2",

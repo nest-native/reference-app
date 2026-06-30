@@ -10,10 +10,9 @@ import { eq } from 'drizzle-orm';
 import { getDrizzleClientToken } from '@nest-native/drizzle';
 import type { AppDatabase } from '../../src/database/database';
 import { outboxEvents } from '../../src/database/schema';
+import { OutboxClaimer, runWorkerLoop } from '@nest-native/messaging';
 import { OrganizationOnboardingService } from '../../src/modules/onboarding/organization-onboarding.service';
 import { FakeEmailTransport } from '../../src/modules/outbox/fake-email-transport.service';
-import { OutboxClaimer } from '../../src/modules/outbox/outbox-claimer.service';
-import { runWorkerLoop } from '../../scripts/start-worker';
 import { seedDatabase } from '../../scripts/seed';
 
 const dbPath = join(
