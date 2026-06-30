@@ -3,7 +3,7 @@ import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 import { KafkaProducerService } from '@nest-native/kafka';
 import { createMockKafkaProducer } from '@nest-native/kafka/testing';
-import { KafkaOutboxTransport } from '../../src/modules/outbox/kafka-outbox-transport';
+import { KafkaOutboxTransport } from '@nest-native/messaging/kafka';
 
 // Unit test: no live broker. The mock producer records every send() call, so we
 // assert exactly what the transport publishes — topic prefixing, the key

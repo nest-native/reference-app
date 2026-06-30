@@ -15,8 +15,8 @@ import {
   projects,
   users,
 } from '../../src/database/schema';
+import { OutboxClaimer } from '@nest-native/messaging';
 import { FakeEmailTransport } from '../../src/modules/outbox/fake-email-transport.service';
-import { OutboxClaimer } from '../../src/modules/outbox/outbox-claimer.service';
 import { OrganizationOnboardingService } from '../../src/modules/onboarding/organization-onboarding.service';
 import { ProjectsRepository } from '../../src/modules/projects/projects.repository';
 import { seedDatabase } from '../../scripts/seed';

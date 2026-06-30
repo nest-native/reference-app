@@ -1,51 +1,10 @@
 import 'reflect-metadata';
-import { setTimeout as delay } from 'node:timers/promises';
 import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import { OutboxClaimer, runWorkerLoop } from '@nest-native/messaging';
 import { loadEnv } from '../src/config/env';
-import {
-  type ClaimerConfig,
-  OutboxClaimer,
-} from '../src/modules/outbox/outbox-claimer.service';
 
 const logger = new Logger('OutboxWorker');
-
-export interface WorkerLoopConfig {
-  pollIntervalMs: number;
-  claimer: Partial<ClaimerConfig>;
-  signal: AbortSignal;
-}
-
-// Run an outbox tick loop until the signal aborts. Each iteration ticks once,
-// then waits the poll interval (abort-cancellable). Errors are logged and the
-// loop continues — individual event failures are already handled by the
-// claimer's retry/backoff.
-export async function runWorkerLoop(
-  claimer: OutboxClaimer,
-  config: WorkerLoopConfig,
-): Promise<void> {
-  while (!config.signal.aborted) {
-    try {
-      const report = await claimer.tick(config.claimer);
-      if (report.claimed > 0) {
-        logger.log(
-          `tick claimed=${report.claimed} completed=${report.completed} retried=${report.retried} failed=${report.failed}`,
-        );
-      }
-    } catch (error) {
-      logger.error(
-        `tick failed: ${error instanceof Error ? error.message : String(error)}`,
-      );
-    }
-    if (config.signal.aborted) return;
-    try {
-      await delay(config.pollIntervalMs, undefined, { signal: config.signal });
-    } catch {
-      // delay rejects with AbortError on abort; treat as a normal stop signal.
-      return;
-    }
-  }
-}
 
 async function main(): Promise<void> {
   const env = loadEnv();
@@ -71,6 +30,10 @@ async function main(): Promise<void> {
   );
 
   try {
+    // The loop is the library's: tick → drain immediately when a batch was
+    // claimed, otherwise wait the poll interval (abort-cancellable). Errors are
+    // logged via onError and the loop continues — individual event failures are
+    // already handled by the claimer's retry/backoff.
     await runWorkerLoop(claimer, {
       pollIntervalMs: env.outbox.pollIntervalMs,
       claimer: {
@@ -81,6 +44,18 @@ async function main(): Promise<void> {
           : {}),
       },
       signal: controller.signal,
+      onTick: (report) => {
+        if (report.claimed > 0) {
+          logger.log(
+            `tick claimed=${report.claimed} completed=${report.completed} retried=${report.retried} failed=${report.failed}`,
+          );
+        }
+      },
+      onError: (error) => {
+        logger.error(
+          `tick failed: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      },
     });
   } finally {
     process.off('SIGTERM', onSignal);

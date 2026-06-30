@@ -4,32 +4,53 @@ import { TransactionalAdapterDrizzleOrm } from '@nestjs-cls/transactional-adapte
 import { ClsModule } from 'nestjs-cls';
 import { getDrizzleClientToken } from '@nest-native/drizzle';
 import { KafkaModule, KafkaProducerService } from '@nest-native/kafka';
+import { MessagingModule } from '@nest-native/messaging';
+import { KafkaOutboxTransport } from '@nest-native/messaging/kafka';
+import { SqliteInboxStore, SqliteOutboxStore } from '@nest-native/messaging/sqlite';
 import { loadEnv } from './config/env';
 import { AuthModule } from './auth/auth.module';
 import { RequestContextModule } from './context/request-context.module';
 import { DatabaseModule } from './database/database.module';
 import { HealthController } from './health/health.controller';
 import { AuditLogModule } from './modules/audit-log/audit-log.module';
-import { InboxModule } from './modules/inbox/inbox.module';
-import { KafkaOutboxTransport } from './modules/outbox/kafka-outbox-transport';
+import { UserInvitedInboxModule } from './modules/inbox/user-invited-inbox.module';
+import { InProcessOutboxModule } from './modules/outbox/in-process-outbox.module';
+import { InProcessOutboxTransport } from './modules/outbox/in-process-outbox-transport';
+import { OutboxRegistry } from './modules/outbox/outbox-registry.service';
 import { OnboardingModule } from './modules/onboarding/onboarding.module';
 import { OrganizationsModule } from './modules/organizations/organizations.module';
-import { OutboxModule } from './modules/outbox/outbox.module';
 import { ProjectsModule } from './modules/projects/projects.module';
 import { UsersModule } from './modules/users/users.module';
 import { AppTrpcModule } from './trpc/trpc.module';
 
-// Reliable-messaging wiring. Kafka is an opt-in profile: with KAFKA_BROKERS
-// unset, the messaging imports are the bare OutboxModule + InboxModule and the
-// app behaves byte-for-byte as it did before — in-process outbox dispatch, and
-// the inbox dedup primitive available for the hermetic test. With KAFKA_BROKERS
-// set, the global KafkaModule comes online and the outbox/inbox switch to their
-// Kafka-backed forms (producer publishes to Kafka, consumers subscribe).
+// Reliable-messaging wiring, now built on `@nest-native/messaging`. Kafka is an
+// opt-in profile: with KAFKA_BROKERS unset, the engine's claimer publishes
+// through the app's in-process transport (registry → FakeEmailTransport) and the
+// inbox dedup primitive is available for the hermetic test — byte-for-byte the
+// app's pre-Kafka behaviour. With KAFKA_BROKERS set, the global KafkaModule comes
+// online, the claimer publishes through the library's Kafka transport, and the
+// UserInvitedConsumer subscribes. The drizzle client token is global, so the
+// engine resolves the base Drizzle instance from it directly.
 const kafkaEnv = loadEnv().kafka;
+const drizzleInstanceToken = getDrizzleClientToken();
 
 function messagingImports(): NonNullable<ModuleMetadata['imports']> {
   if (!kafkaEnv?.enabled) {
-    return [OutboxModule, InboxModule];
+    return [
+      InProcessOutboxModule,
+      MessagingModule.forRootAsync({
+        drizzleInstanceToken,
+        outboxStore: new SqliteOutboxStore(),
+        inboxStore: new SqliteInboxStore(),
+        imports: [InProcessOutboxModule],
+        inject: [OutboxRegistry],
+        // `useTransport` is typed `(...args: unknown[]) => ...` (unlike Nest's
+        // `useFactory: (...args: any[]) => T`), so a factory with typed params is
+        // not assignable under strictFunctionTypes — narrow from unknown here.
+        useTransport: (registry) =>
+          new InProcessOutboxTransport(registry as OutboxRegistry),
+      }),
+    ];
   }
   return [
     KafkaModule.forRootAsync({
@@ -44,12 +65,19 @@ function messagingImports(): NonNullable<ModuleMetadata['imports']> {
         producer: { 'enable.idempotence': true, acks: 'all' },
       }),
     }),
-    OutboxModule.forRootAsync({
+    UserInvitedInboxModule,
+    MessagingModule.forRootAsync({
+      drizzleInstanceToken,
+      outboxStore: new SqliteOutboxStore(),
+      inboxStore: new SqliteInboxStore(),
       inject: [KafkaProducerService],
-      useFactory: (producer: KafkaProducerService) =>
-        new KafkaOutboxTransport(producer, kafkaEnv.topicPrefix),
+      // See the narrow-from-unknown note above: `useTransport` uses `unknown[]`.
+      useTransport: (producer) =>
+        new KafkaOutboxTransport(
+          producer as KafkaProducerService,
+          kafkaEnv.topicPrefix,
+        ),
     }),
-    InboxModule.forRootAsync(),
   ];
 }
 

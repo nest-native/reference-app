@@ -1,13 +1,12 @@
 import 'reflect-metadata';
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
+import { PermanentError, RetryableError } from '@nest-native/messaging';
 import {
   actionForError,
   actionForOutcome,
   deriveDedupKey,
-  PermanentError,
-  RetryableError,
-} from '../../src/modules/inbox/idempotent-consumer';
+} from '@nest-native/messaging/kafka';
 
 // Pure unit tests for the consumer-side decision logic — no broker, no Nest.
 

@@ -9,8 +9,8 @@ import { and, eq } from 'drizzle-orm';
 import { getDrizzleClientToken } from '@nest-native/drizzle';
 import type { AppDatabase } from '../../src/database/database';
 import { auditEvents, inboxEvents } from '../../src/database/schema';
+import { InboxService } from '@nest-native/messaging';
 import { AuditLogService } from '../../src/modules/audit-log/audit-log.service';
-import { InboxService } from '../../src/modules/inbox/inbox.service';
 import { seedDatabase } from '../../scripts/seed';
 
 // Hermetic: NO broker. The inbox dedup primitive is synchronous + DB-only, so
