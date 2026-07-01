@@ -14,6 +14,7 @@ import { DatabaseModule } from './database/database.module';
 import { HealthController } from './health/health.controller';
 import { ActivityModule } from './modules/activity/activity.module';
 import { AuditLogModule } from './modules/audit-log/audit-log.module';
+import { EventsCatalogModule } from './modules/events-catalog/events-catalog.module';
 import { TaskActivityInboxModule } from './modules/inbox/task-activity-inbox.module';
 import { UserInvitedInboxModule } from './modules/inbox/user-invited-inbox.module';
 import { InProcessOutboxModule } from './modules/outbox/in-process-outbox.module';
@@ -115,6 +116,7 @@ function messagingImports(): NonNullable<ModuleMetadata['imports']> {
     ActivityModule,
     OnboardingModule,
     AppTrpcModule,
+    EventsCatalogModule,
   ],
   controllers: [HealthController],
 })
