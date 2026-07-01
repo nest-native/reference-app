@@ -10,7 +10,7 @@
   "license": "MIT",
   "author": "Rodrigo Nogueira",
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "scripts": {
     "build": "rimraf dist && tsc -p tsconfig.build.json",
