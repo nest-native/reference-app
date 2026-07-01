@@ -2,7 +2,7 @@
   "name": "nest-native-reference-app",
   "version": "0.0.1",
   "private": true,
-  "description": "Production-shaped reference app for the nest-native stack (@nest-native/drizzle + @nest-native/trpc)",
+  "description": "Production-shaped multi-tenant work-tracking SaaS showcasing all six @nest-native libraries (drizzle, trpc, kafka, messaging, asyncapi, ai-sdk)",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/nest-native/reference-app.git"
