@@ -1,9 +1,11 @@
+import { activityEvents } from './activity';
 import { auditEvents } from './audit-events';
 import { inboxEvents } from './inbox-events';
 import { memberships } from './memberships';
 import { organizations } from './organizations';
 import { outboxEvents } from './outbox-events';
 import { projects } from './projects';
+import { tasks } from './tasks';
 import { users } from './users';
 
 export const schema = {
@@ -11,20 +13,25 @@ export const schema = {
   users,
   memberships,
   projects,
+  tasks,
+  activityEvents,
   auditEvents,
   outboxEvents,
   inboxEvents,
 };
 
 export {
+  activityEvents,
   auditEvents,
   inboxEvents,
   memberships,
   organizations,
   outboxEvents,
   projects,
+  tasks,
   users,
 };
+export type { ActivityEvent, NewActivityEvent } from './activity';
 export type { InboxEvent, InboxStatus, NewInboxEvent } from './inbox-events';
 export { INBOX_STATUSES } from './inbox-events';
 export type { AuditEvent, NewAuditEvent } from './audit-events';
@@ -38,4 +45,6 @@ export type { NewOrganization, Organization } from './organizations';
 export type { NewOutboxEvent, OutboxEvent, OutboxStatus } from './outbox-events';
 export { OUTBOX_STATUSES } from './outbox-events';
 export type { NewProject, Project } from './projects';
+export type { NewTask, Task, TaskStatus } from './tasks';
+export { TASK_STATUSES } from './tasks';
 export type { NewUser, User } from './users';

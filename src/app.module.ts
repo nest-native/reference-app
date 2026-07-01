@@ -12,7 +12,9 @@ import { AuthModule } from './auth/auth.module';
 import { RequestContextModule } from './context/request-context.module';
 import { DatabaseModule } from './database/database.module';
 import { HealthController } from './health/health.controller';
+import { ActivityModule } from './modules/activity/activity.module';
 import { AuditLogModule } from './modules/audit-log/audit-log.module';
+import { TaskActivityInboxModule } from './modules/inbox/task-activity-inbox.module';
 import { UserInvitedInboxModule } from './modules/inbox/user-invited-inbox.module';
 import { InProcessOutboxModule } from './modules/outbox/in-process-outbox.module';
 import { InProcessOutboxTransport } from './modules/outbox/in-process-outbox-transport';
@@ -20,6 +22,7 @@ import { OutboxRegistry } from './modules/outbox/outbox-registry.service';
 import { OnboardingModule } from './modules/onboarding/onboarding.module';
 import { OrganizationsModule } from './modules/organizations/organizations.module';
 import { ProjectsModule } from './modules/projects/projects.module';
+import { TasksModule } from './modules/tasks/tasks.module';
 import { UsersModule } from './modules/users/users.module';
 import { AppTrpcModule } from './trpc/trpc.module';
 
@@ -66,6 +69,7 @@ function messagingImports(): NonNullable<ModuleMetadata['imports']> {
       }),
     }),
     UserInvitedInboxModule,
+    TaskActivityInboxModule,
     MessagingModule.forRootAsync({
       drizzleInstanceToken,
       outboxStore: new SqliteOutboxStore(),
@@ -107,6 +111,8 @@ function messagingImports(): NonNullable<ModuleMetadata['imports']> {
     OrganizationsModule,
     UsersModule,
     ProjectsModule,
+    TasksModule,
+    ActivityModule,
     OnboardingModule,
     AppTrpcModule,
   ],
