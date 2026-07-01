@@ -2,96 +2,47 @@
 
 <p>
   <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/license-MIT-green.svg" alt="License" /></a>
-  <img src="https://img.shields.io/badge/node-%3E%3D20-brightgreen.svg" alt="Node version" />
-  <img src="https://img.shields.io/badge/status-v0.1-blue.svg" alt="Status" />
+  <img src="https://img.shields.io/badge/node-%3E%3D22-brightgreen.svg" alt="Node version" />
+  <img src="https://img.shields.io/badge/libraries-6%2F6-0f766e.svg" alt="All six nest-native libraries" />
 </p>
 
-## What This Is
+A production-shaped **multi-tenant work-tracking SaaS** — think a small Linear/Asana — that puts **all six [nest-native](https://github.com/nest-native) libraries** under realistic backend pressure and composes them the way a real product would: persistence, a typed API, reliable domain events, an event backbone, a documented event catalog, and a streaming AI assistant.
 
-A production-shaped reference application that demonstrates how
-[`nest-drizzle-native`](https://github.com/nest-native/nest-drizzle-native) and
-[`nest-trpc-native`](https://github.com/nest-native/nest-trpc-native) compose
-under realistic backend pressure: feature modules, multi-tenant auth context,
-cross-service transactions, real-database integration tests, an
-outbox-pattern worker for post-commit side effects, and a typed tRPC
-client smoke check.
+It is not a product. It **serves the libraries** — a credible demo a team could adapt, and a feedback loop: if something feels awkward here, that's signal to add API in a separate PR to the relevant library (that's how, for example, `MessagingModule.forRoot`'s `imports` option and `KafkaInboxConsumer`'s `dedupKey` argument came to exist).
 
-## Why It Exists
+## The story
 
-The reference app **serves the libraries** — it is not a product. Two
-implicit deliverables:
+Follow one journey through the code and every library shows up where a real system would reach for it:
 
-1. A credible demo a team could adapt for a real backend.
-2. A feedback loop on the libraries themselves. If something feels awkward
-   here, that is signal to add API there in a separate PR to the relevant
-   library repo.
+1. **An org invites a teammate.** `OrganizationOnboardingService.inviteUser()` writes the user + membership + project rows **and** enqueues a `user.invited` event — all in one transaction.
+2. **They open a project and work tasks.** Create → assign → complete a task; each writes the task row **and** emits a `task.created` / `task.assigned` / `task.completed` domain event **in the same transaction** (no lost events, no phantom events).
+3. **The events flow over Kafka.** A background claimer relays committed events to the broker; consumers turn them into an **activity feed** read-model — deduplicated, so an at-least-once redelivery never double-counts.
+4. **The event contracts are published.** An **AsyncAPI 3.0 catalog** at `/asyncapi` documents every event so another team could subscribe to your streams.
+5. **AI reads the activity.** A streaming **project assistant** turns a project's recent activity into a status update, token by token.
 
-## Status
+## Six libraries, six chapters
 
-All eight milestones in the implementation brief are complete:
-
-| | Milestone | What landed |
+| Library | Its job in the story | Where in the code |
 | --- | --- | --- |
-| 1 | Bootstrap | Repo skeleton, governance, CI, Nest scaffold, Drizzle + tRPC `ping` |
-| 2 | Database wired | (covered by 1) |
-| 3 | Schema + seed | Six tables, drizzle-kit migrations, idempotent seed |
-| 4 | Auth + request context | `scrypt` passwords, real HS256 JWT, `AuthGuard`, request-scoped `CURRENT_USER` / `CURRENT_ORGANIZATION` |
-| 5 | Core modules | `organizations` / `users` / `projects` repos + services + tRPC routers, scoped by current org |
-| 6 | Transactional workflow | `OrganizationOnboardingService.inviteUser()` writes 5 rows in one `@Transactional()`; happy-path, rollback-safety, crash-recovery tests |
-| 7 | Worker | Long-running `OutboxClaimer` poller with graceful shutdown (`scripts/start-worker.ts`) |
-| 8 | Polish | `client-smoke/` typed-client check, Dockerfile + docker-compose, `docs/architecture.md`, this README |
+| [`@nest-native/drizzle`](https://github.com/nest-native/drizzle) | **Persistence** — orgs, users, projects, tasks, activity; repositories, transactions, multi-tenant scoping | `src/database/`, every `*.repository.ts` (`@DrizzleRepository`, `@InjectTransaction`) |
+| [`@nest-native/trpc`](https://github.com/nest-native/trpc) | **The typed API** — task CRUD, project queries, the activity feed, all typesafe end-to-end | `src/modules/*/**.router.ts` (`@Router`, `@Query`/`@Mutation`), `src/trpc/`, generated `AppRouter` |
+| [`@nest-native/messaging`](https://github.com/nest-native/messaging) | **Reliable domain events** — the transactional outbox (emit in-tx) + idempotent inbox (dedup on consume) | `src/modules/{outbox,inbox,activity}/`, `OutboxProducer.enqueue` inside `@Transactional()` |
+| [`@nest-native/kafka`](https://github.com/nest-native/kafka) | **The event backbone** — the outbox relays through `KafkaOutboxTransport`; `@KafkaConsumer`s build read-models | the Kafka profile in `src/app.module.ts`, `src/modules/inbox/*.consumer.ts` |
+| [`@nest-native/asyncapi`](https://github.com/nest-native/asyncapi) | **The event catalog** — an AsyncAPI 3.0 doc so other teams integrate with your streams | `src/modules/events-catalog/`, served at `/asyncapi` from `src/main.ts` |
+| [`@nest-native/ai-sdk`](https://github.com/nest-native/ai-sdk) | **AI over your data** — a streaming assistant that summarizes a project's activity | `src/modules/assistant/` (`@AiStream`), `POST /projects/:projectId/assistant` |
 
-## Compatibility
+Underneath, [`@nestjs-cls/transactional`](https://www.npmjs.com/package/@nestjs-cls/transactional) (with the official Drizzle adapter) ties the outbox write to the business write — its `transactionMode: 'auto'` runs the same `@Transactional()` code against better-sqlite3's synchronous driver locally and an async driver in production.
 
-| Runtime | Supported line |
-| --- | --- |
-| Node.js | `>=20` |
-| NestJS | `11.x` |
-| tRPC | `11.x` |
-| Drizzle ORM | `0.45.x` |
-| `nest-drizzle-native` | `0.2.x` |
-| `nest-trpc-native` | `0.4.3+` |
-| `@nestjs-cls/transactional` | `^3` |
+## Two profiles, one codebase
 
-## Repo Layout
+Everything above runs **with no infrastructure** by default:
 
-```
-src/
-  main.ts                       Nest bootstrap (listens on PORT)
-  app.module.ts                 Root module + ClsPluginTransactional wiring
-  config/env.ts                 loadEnv() — single source of truth for env
-  database/                     DrizzleModule.forRoot wiring + schema + migrations
-  auth/                         JWT, scrypt, AuthService, middleware, AuthGuard,
-                                @CurrentUser / @CurrentOrganization, AuthRouter
-  context/                      Request-scoped CURRENT_USER / CURRENT_ORGANIZATION
-  health/                       /health controller
-  modules/
-    organizations/              repo + service + tRPC router
-    users/                      repo + service + tRPC router (includes users.invite)
-    projects/                   repo + service + tRPC router
-    memberships/                repo only (used by onboarding)
-    audit-log/                  AuditLogService.record()
-    outbox/                     producer + claimer + registry + transport + handler
-    onboarding/                 OrganizationOnboardingService — the @Transactional flow
-  trpc/                         TrpcModule.forRoot wiring + PingRouter + generate-types
-test/
-  integration/                  real-DB tests (node:test)
-  e2e/                          tRPC over HTTP smoke tests
-scripts/
-  migrate.ts                    drizzle-kit migrator runner
-  seed.ts                       Idempotent dev seed (1 org + 1 admin + 1 project)
-  smoke.ts                      Boots app, hits /health, checks DB
-  start-worker.ts               Long-running outbox poller (SIGTERM-aware)
-client-smoke/
-  client.ts                     Typed tRPC client over the generated AppRouter
-  tsconfig.json
-docs/
-  architecture.md               One-sitting tour of the app
-Dockerfile                      Multi-stage production image
-docker-compose.yml              API + worker + (optional) Postgres recipe
-```
+- **In-process (default)** — the outbox relays through an in-process transport and handlers build the activity feed synchronously. SQLite in a file, no broker. This is what the tests exercise.
+- **Kafka** — set `KAFKA_BROKERS` and the exact same domain code relays through `KafkaOutboxTransport` to a real cluster, with `@KafkaConsumer`s on the other side. The event bodies, dedup keys, and wire headers are identical; only the transport swaps.
 
-## Getting Started
+## Getting started
+
+Requires **Node ≥ 22** (the AI SDK requires it).
 
 ```bash
 nvm use
@@ -103,82 +54,80 @@ AUTH_SECRET=dev-secret-must-be-at-least-32-characters-xxxxx \
   npm run start:dev
 ```
 
-API listens on `http://localhost:3000`. tRPC mounts at `/trpc`. Health at
-`/health`. Seed creates `admin@acme.test` / `admin123!` with one starter
-project for local poking.
+The API listens on `http://localhost:3000`:
 
-Run the outbox worker as a separate process:
+| Surface | Path |
+| --- | --- |
+| tRPC (typed API) | `/trpc` |
+| Health | `/health` |
+| AsyncAPI catalog (UI / JSON / YAML) | `/asyncapi`, `/asyncapi-json`, `/asyncapi-yaml` |
+| AI project assistant (SSE stream) | `POST /projects/:projectId/assistant` |
+
+The seed creates `admin@acme.test` / `admin123!` with a starter org + project. The AI assistant streams from an **offline mock model** by default; set `OPENAI_API_KEY` to swap in a real provider (`@ai-sdk/openai`) with no code change. Run the outbox worker as its own process with `npm run start:worker`.
+
+## Walking the journey (curl)
 
 ```bash
-AUTH_SECRET=… DATABASE_URL=./reference-app.db npm run start:worker
+# 1. create + assign + complete a task (tRPC) → each emits a domain event in-tx
+#    (use the typed client in client-smoke/ for a real end-to-end example)
+# 2. the outbox worker relays events; the activity feed fills up:
+#    trpc: activity.list({ projectId })
+# 3. inspect the event catalog other teams would integrate against:
+curl localhost:3000/asyncapi-json | jq '.channels | keys'   # user.invited, task.created, task.assigned, task.completed
+# 4. stream an AI status update for the project's activity:
+curl -N -X POST localhost:3000/projects/1/assistant -H 'authorization: Bearer <jwt>'
 ```
 
-## What It Demonstrates
+## Repo layout
 
-- `nest-drizzle-native`: `DrizzleModule.forRoot` + `forFeature([Repo])`,
-  `@DrizzleRepository`, `@InjectDrizzle`, `@InjectTransaction` for tx
-  participation, `getDrizzleClientToken`.
-- `nest-trpc-native`: `TrpcModule.forRoot` with `createContext`, `@Router`,
-  `@Query`/`@Mutation`, `@Input`/`@TrpcContext`, generated `AppRouter`,
-  guards/interceptors integration.
-- `@nestjs-cls/transactional` with the official
-  `@nestjs-cls/transactional-adapter-drizzle-orm` (>=1.3.0), which
-  auto-detects better-sqlite3's synchronous driver and runs the transaction
-  in sync mode.
-- Multi-tenant patterns: request-scoped `CURRENT_USER` /
-  `CURRENT_ORGANIZATION` providers populated by an Express middleware that
-  decodes a JWT; tRPC procedures consume the same `authContext` through
-  `@TrpcContext` and class-level `@UseGuards(AuthGuard)`.
-- Transactional outbox: post-commit side effects with at-least-once delivery,
-  exponential backoff, partial-unique idempotency, stuck-claim recovery.
-- A typed tRPC client (`client-smoke/`) that consumes the generated
-  `AppRouter` and exercises one query, one mutation, and one
-  auth-protected call against a live local server.
+```
+src/
+  main.ts                  Nest bootstrap + AsyncApiModule.setup('/asyncapi', ...)
+  app.module.ts            Root module, ClsPluginTransactional, in-process/Kafka messaging profiles
+  config/env.ts            loadEnv() — single source of truth (incl. the optional kafka block)
+  database/                DrizzleModule wiring + schema (orgs/users/projects/tasks/activity/...) + migrations
+  auth/                    scrypt passwords, HS256 JWT, AuthGuard, middleware
+  context/                 request-scoped CURRENT_USER / CURRENT_ORGANIZATION
+  modules/
+    organizations/ users/ projects/    repos + services + tRPC routers (tenant-scoped)
+    tasks/                             the work-item domain — CRUD + lifecycle events
+    activity/                          the event-fed activity feed read-model + router
+    onboarding/                        OrganizationOnboardingService — the @Transactional invite flow
+    outbox/ inbox/                     the messaging pair (in-process handlers + Kafka consumers)
+    events-catalog/                    @nest-native/asyncapi event declarations
+    assistant/                         @nest-native/ai-sdk streaming project assistant
+    audit-log/ memberships/            supporting services
+  trpc/                    TrpcModule.forRoot + routers + generated AppRouter
+test/integration/          real-DB tests (node:test) — task workflow, dedup, asyncapi, AI stream
+client-smoke/              typed tRPC client over the generated AppRouter
+docs/architecture.md       one-sitting tour
+```
 
-See [`docs/architecture.md`](docs/architecture.md) for the full tour.
-
-## Testing
+## Testing & quality gates
 
 ```bash
-npm run test          # node --test, integration + e2e (currently 45 tests)
+npm run test          # node --test: integration + e2e (real SQLite, offline)
 npm run test:cov      # with c8 coverage
-npm run client-smoke  # typed client against a live, seeded local server
+npm run ci            # typecheck, lint, complexity (≤15), test:cov, security:audit, build
 ```
 
-Coverage is **pragmatic, not 100%**. The 100% bar belongs to the libraries.
-Aim for ≥90% on domain modules; the outbox worker and transactional
-workflow have explicit rollback/retry/crash-recovery tests regardless of
-overall percentage.
+Coverage here is **pragmatic, not 100%** — the 100% bar belongs to the libraries. The transactional workflow, the outbox worker, the inbox dedup, the AsyncAPI catalog, and the AI stream all have explicit tests. CI runs on **Node 22**.
 
-## Quality Gates
+## Compatibility
 
-```bash
-npm run ci
-```
-
-Runs in order: `typecheck`, `lint`, `complexity:check` (cognitive
-complexity ceiling 15), `test:cov`, `security:audit`
-(`npm audit --audit-level=high`), `build`. CI runs on Node 20 and 22.
-
-## Deployment
-
-The default storage is `better-sqlite3` for zero-setup local dev. The
-production recipe is Postgres — see
-[`docs/architecture.md#production-deployment-recipe`](docs/architecture.md#production-deployment-recipe)
-for the swap, and [`docker-compose.yml`](docker-compose.yml) for the
-two-process (API + worker) stack with an optional Postgres service.
+| | Supported line |
+| --- | --- |
+| Node.js | `>=22` |
+| NestJS | `11.x` |
+| `@nest-native/drizzle` | `0.3.x` · `@nest-native/trpc` `0.5.x` · `@nest-native/kafka` `0.2.x` |
+| `@nest-native/messaging` | `0.2.x` · `@nest-native/asyncapi` `0.1.x` · `@nest-native/ai-sdk` `0.4.x` (on `ai@7`) |
+| Drizzle ORM | `0.45.x` · `@nestjs-cls/transactional` `^3` |
 
 ## Philosophy
 
-- **Feel native.** Decorator-first, Nest modules + DI + enhancers,
-  lifecycle hooks. No functional wrappers around library decorators.
-- **Stay honest.** Drizzle remains SQL-first; tRPC remains tRPC. No hidden
-  magic where explicit application code is clearer.
-- **No unnecessary runtime dependencies.** Every `dependencies` entry has
-  a one-line justification in `CHANGELOG.md`.
-- **Library fixes ship as separate PRs to library repos.** If you find a
-  bug in `nest-drizzle-native` or `nest-trpc-native` while building here,
-  stash, open the library-fix PR upstream, get it merged, then resume.
+- **Feel native.** Decorator-first, Nest modules + DI + enhancers, lifecycle hooks. No functional wrappers around library decorators.
+- **Stay honest.** Drizzle stays SQL-first; tRPC stays tRPC; the outbox is a real table, not magic.
+- **Every event has a home.** Emitted in-transaction (messaging), delivered over the backbone (kafka), documented (asyncapi), and consumed — including by the AI (ai-sdk).
+- **Library fixes ship upstream.** Find a rough edge in a nest-native library while building here? Open the fix as a separate PR to that library, get it merged, then resume.
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for design rules, the library-fix
-workflow, dependency review, and security pass expectations.
+See [`docs/architecture.md`](docs/architecture.md) for the full tour and [CONTRIBUTING.md](CONTRIBUTING.md) for the design rules.
