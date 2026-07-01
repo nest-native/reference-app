@@ -13,6 +13,7 @@ import { RequestContextModule } from './context/request-context.module';
 import { DatabaseModule } from './database/database.module';
 import { HealthController } from './health/health.controller';
 import { ActivityModule } from './modules/activity/activity.module';
+import { AssistantModule } from './modules/assistant/assistant.module';
 import { AuditLogModule } from './modules/audit-log/audit-log.module';
 import { EventsCatalogModule } from './modules/events-catalog/events-catalog.module';
 import { TaskActivityInboxModule } from './modules/inbox/task-activity-inbox.module';
@@ -114,6 +115,7 @@ function messagingImports(): NonNullable<ModuleMetadata['imports']> {
     ProjectsModule,
     TasksModule,
     ActivityModule,
+    AssistantModule,
     OnboardingModule,
     AppTrpcModule,
     EventsCatalogModule,
