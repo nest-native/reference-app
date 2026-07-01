@@ -1,4 +1,6 @@
 import { Module } from '@nestjs/common';
+import { ActivityModule } from '../activity/activity.module';
+import { ActivityHandler } from './activity.handler';
 import { FakeEmailTransport } from './fake-email-transport.service';
 import { OutboxRegistry } from './outbox-registry.service';
 import { UserInvitedHandler } from './user-invited.handler';
@@ -16,7 +18,13 @@ import { UserInvitedHandler } from './user-invited.handler';
  * is exported so integration tests can inspect what was "sent".
  */
 @Module({
-  providers: [OutboxRegistry, FakeEmailTransport, UserInvitedHandler],
+  imports: [ActivityModule],
+  providers: [
+    OutboxRegistry,
+    FakeEmailTransport,
+    UserInvitedHandler,
+    ActivityHandler,
+  ],
   exports: [OutboxRegistry, FakeEmailTransport],
 })
 export class InProcessOutboxModule {}

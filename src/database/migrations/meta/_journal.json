@@ -22,6 +22,13 @@
       "when": 1782168825938,
       "tag": "0002_add_inbox_events",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1782931479049,
+      "tag": "0003_loud_nick_fury",
+      "breakpoints": true
     }
   ]
 }
