@@ -5,6 +5,10 @@ import { ClsModule } from 'nestjs-cls';
 import { getDrizzleClientToken } from '@nest-native/drizzle';
 import { KafkaModule, KafkaProducerService } from '@nest-native/kafka';
 import { MessagingModule } from '@nest-native/messaging';
+import {
+  InProcessOutboxTransport,
+  OutboxRegistry,
+} from '@nest-native/messaging/in-process';
 import { KafkaOutboxTransport } from '@nest-native/messaging/kafka';
 import { SqliteInboxStore, SqliteOutboxStore } from '@nest-native/messaging/sqlite';
 import { loadEnv } from './config/env';
@@ -19,8 +23,6 @@ import { EventsCatalogModule } from './modules/events-catalog/events-catalog.mod
 import { TaskActivityInboxModule } from './modules/inbox/task-activity-inbox.module';
 import { UserInvitedInboxModule } from './modules/inbox/user-invited-inbox.module';
 import { InProcessOutboxModule } from './modules/outbox/in-process-outbox.module';
-import { InProcessOutboxTransport } from './modules/outbox/in-process-outbox-transport';
-import { OutboxRegistry } from './modules/outbox/outbox-registry.service';
 import { OnboardingModule } from './modules/onboarding/onboarding.module';
 import { OrganizationsModule } from './modules/organizations/organizations.module';
 import { ProjectsModule } from './modules/projects/projects.module';
@@ -30,7 +32,7 @@ import { AppTrpcModule } from './trpc/trpc.module';
 
 // Reliable-messaging wiring, now built on `@nest-native/messaging`. Kafka is an
 // opt-in profile: with KAFKA_BROKERS unset, the engine's claimer publishes
-// through the app's in-process transport (registry → FakeEmailTransport) and the
+// through the library's in-process transport (registry → FakeEmailTransport) and the
 // inbox dedup primitive is available for the hermetic test — byte-for-byte the
 // app's pre-Kafka behaviour. With KAFKA_BROKERS set, the global KafkaModule comes
 // online, the claimer publishes through the library's Kafka transport, and the

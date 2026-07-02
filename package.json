@@ -35,11 +35,11 @@
     "ci": "npm run typecheck && npm run client-smoke:typecheck && npm run lint && npm run complexity:check && npm run test:cov && npm run security:audit && npm run build"
   },
   "dependencies": {
-    "@nest-native/ai-sdk": "^0.4.0",
-    "@nest-native/asyncapi": "^0.1.2",
+    "@nest-native/ai-sdk": "^0.5.0",
+    "@nest-native/asyncapi": "^0.2.0",
     "@nest-native/drizzle": "^0.3.2",
-    "@nest-native/kafka": "^0.2.0",
-    "@nest-native/messaging": "^0.2.0",
+    "@nest-native/kafka": "^0.3.0",
+    "@nest-native/messaging": "^0.3.1",
     "@nest-native/trpc": "^0.5.0",
     "@nestjs-cls/transactional": "^3.2.1",
     "@nestjs-cls/transactional-adapter-drizzle-orm": "^1.3.0",

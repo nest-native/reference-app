@@ -1,13 +1,13 @@
 import { Inject, Injectable, type OnModuleInit } from '@nestjs/common';
 import {
+  type OutboxHandlerResult,
+  OutboxRegistry,
+} from '@nest-native/messaging/in-process';
+import {
   isUserInvitedPayload,
   OUTBOX_TOPIC_USER_INVITED,
 } from './outbox.constants';
 import { FakeEmailTransport } from './fake-email-transport.service';
-import {
-  type OutboxHandlerResult,
-  OutboxRegistry,
-} from './outbox-registry.service';
 
 @Injectable()
 export class UserInvitedHandler implements OnModuleInit {

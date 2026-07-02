@@ -80,8 +80,8 @@ async function deliver(
     value: payload === undefined ? null : JSON.stringify(payload),
     headers: { 'x-event-id': key, ...headers },
   });
-  // Give the in-memory dispatch a tick to run the async handler.
-  await new Promise((r) => setTimeout(r, 30));
+  // Settle every in-flight handler pipeline (including DLQ produces).
+  await broker.idle();
 }
 
 before(async () => {
@@ -203,7 +203,7 @@ test('message with no derivable key is dead-lettered', async () => {
   broker.reset();
   // No x-event-id header and no kafka key → not keyable → PermanentError → DLQ.
   await broker.emit(TOPIC, { value: JSON.stringify(validPayload()) });
-  await new Promise((r) => setTimeout(r, 30));
+  await broker.idle();
 
   assert.equal(
     broker.getSentTo(DLQ_TOPIC).length,
