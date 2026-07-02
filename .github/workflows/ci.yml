@@ -41,6 +41,11 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      # The generated AppRouter is transformer-enabled (server runs superjson),
+      # so a client link without the matching transformer fails right here.
+      - name: Typecheck tRPC client
+        run: npm run client-smoke:typecheck
+
       - name: Lint
         run: npm run lint
 
@@ -58,6 +63,10 @@ jobs:
 
       - name: Smoke
         run: npm run smoke
+
+      # Typed-client walk of the API, including the superjson Date round-trip.
+      - name: tRPC client smoke
+        run: npm run client-smoke
 
       - name: Upload coverage artifacts
         if: matrix.node-version == '22'

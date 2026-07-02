@@ -25,7 +25,7 @@ Follow one journey through the code and every library shows up where a real syst
 | Library | Its job in the story | Where in the code |
 | --- | --- | --- |
 | [`@nest-native/drizzle`](https://github.com/nest-native/drizzle) | **Persistence** — orgs, users, projects, tasks, activity; repositories, transactions, multi-tenant scoping | `src/database/`, every `*.repository.ts` (`@DrizzleRepository`, `@InjectTransaction`) |
-| [`@nest-native/trpc`](https://github.com/nest-native/trpc) | **The typed API** — task CRUD, project queries, the activity feed, all typesafe end-to-end | `src/modules/*/**.router.ts` (`@Router`, `@Query`/`@Mutation`), `src/trpc/`, generated `AppRouter` |
+| [`@nest-native/trpc`](https://github.com/nest-native/trpc) | **The typed API** — task CRUD, project queries, the activity feed, all typesafe end-to-end; the superjson transformer keeps the feed's `Date`s real across the wire (the client link is *required* to match, at compile time), and failed validations reach the client as flattened Zod field errors (`error.data.zodError`) | `src/modules/*/**.router.ts` (`@Router`, `@Query`/`@Mutation`), `src/trpc/` (transformer, error formatting, response meta), generated `AppRouter` |
 | [`@nest-native/messaging`](https://github.com/nest-native/messaging) | **Reliable domain events** — the transactional outbox (emit in-tx) + idempotent inbox (dedup on consume) | `src/modules/{outbox,inbox,activity}/`, `OutboxProducer.enqueue` inside `@Transactional()` |
 | [`@nest-native/kafka`](https://github.com/nest-native/kafka) | **The event backbone** — the outbox relays through `KafkaOutboxTransport`; `@KafkaConsumer`s build read-models | the Kafka profile in `src/app.module.ts`, `src/modules/inbox/*.consumer.ts` |
 | [`@nest-native/asyncapi`](https://github.com/nest-native/asyncapi) | **The event catalog** — an AsyncAPI 3.0 doc so other teams integrate with your streams | `src/modules/events-catalog/`, served at `/asyncapi` from `src/main.ts` |
@@ -119,7 +119,7 @@ Coverage here is **pragmatic, not 100%** — the 100% bar belongs to the librari
 | --- | --- |
 | Node.js | `>=22` |
 | NestJS | `11.x` |
-| `@nest-native/drizzle` | `0.3.x` · `@nest-native/trpc` `0.5.x` · `@nest-native/kafka` `0.2.x` |
+| `@nest-native/drizzle` | `0.3.x` · `@nest-native/trpc` `0.6.x` · `@nest-native/kafka` `0.2.x` |
 | `@nest-native/messaging` | `0.2.x` · `@nest-native/asyncapi` `0.1.x` · `@nest-native/ai-sdk` `0.4.x` (on `ai@7`) |
 | Drizzle ORM | `0.45.x` · `@nestjs-cls/transactional` `^3` |
 

@@ -5,6 +5,8 @@ import { join } from 'node:path';
 import { after, before, test } from 'node:test';
 import type { INestApplication } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import superjson from 'superjson';
+import type { SuperJSONResult } from 'superjson';
 import { seedDatabase } from '../../scripts/seed';
 
 const trpcPath = '/trpc';
@@ -34,23 +36,36 @@ after(async () => {
   await app.close();
 });
 
-interface TrpcSuccess<T> {
-  result: { data: T };
+// With `transformer: superjson` on the server, the raw wire carries superjson
+// envelopes in both directions: inputs are wrapped with `superjson.serialize`
+// and `result.data` / `error` are decoded with `superjson.deserialize`.
+interface TrpcSuccess {
+  result: { data: SuperJSONResult };
 }
 
 interface TrpcError {
-  error: { message: string; data: { httpStatus: number } };
+  error: SuperJSONResult;
+}
+
+interface TrpcErrorShape {
+  message: string;
+  data: { httpStatus: number };
 }
 
 async function postMutation<T>(name: string, input: unknown): Promise<T> {
   const response = await fetch(`${baseUrl}${trpcPath}/${name}`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(input),
+    body: JSON.stringify(superjson.serialize(input)),
   });
   assert.equal(response.status, 200, `mutation ${name} expected 200`);
-  const body = (await response.json()) as TrpcSuccess<T>;
-  return body.result.data;
+  const body = (await response.json()) as TrpcSuccess;
+  return superjson.deserialize<T>(body.result.data);
+}
+
+async function readError(response: Response): Promise<TrpcErrorShape> {
+  const body = (await response.json()) as TrpcError;
+  return superjson.deserialize<TrpcErrorShape>(body.error);
 }
 
 test('auth.login returns a token and user metadata for the seeded admin', async () => {
@@ -70,16 +85,18 @@ test('auth.login rejects the wrong password with httpStatus 401', async () => {
   const response = await fetch(`${baseUrl}${trpcPath}/auth.login`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ email: 'admin@acme.test', password: 'wrong' }),
+    body: JSON.stringify(
+      superjson.serialize({ email: 'admin@acme.test', password: 'wrong' }),
+    ),
   });
-  const body = (await response.json()) as TrpcError;
-  assert.equal(body.error.data.httpStatus, 401);
+  const error = await readError(response);
+  assert.equal(error.data.httpStatus, 401);
 });
 
 test('auth.me without a token returns httpStatus 401', async () => {
   const response = await fetch(`${baseUrl}${trpcPath}/auth.me`);
-  const body = (await response.json()) as TrpcError;
-  assert.equal(body.error.data.httpStatus, 401);
+  const error = await readError(response);
+  assert.equal(error.data.httpStatus, 401);
 });
 
 test('auth.me with a valid token returns the current user and organization', async () => {
@@ -92,18 +109,19 @@ test('auth.me with a valid token returns the current user and organization', asy
     headers: { authorization: `Bearer ${login.token}` },
   });
   assert.equal(response.status, 200);
-  const body = (await response.json()) as TrpcSuccess<{
+  const body = (await response.json()) as TrpcSuccess;
+  const data = superjson.deserialize<{
     user: { id: number };
     organization: { id: number } | null;
-  }>;
-  assert.equal(typeof body.result.data.user.id, 'number');
-  assert.ok(body.result.data.organization !== null);
+  }>(body.result.data);
+  assert.equal(typeof data.user.id, 'number');
+  assert.ok(data.organization !== null);
 });
 
 test('auth.me with an invalid token returns httpStatus 401', async () => {
   const response = await fetch(`${baseUrl}${trpcPath}/auth.me`, {
     headers: { authorization: 'Bearer not-a-real-token' },
   });
-  const body = (await response.json()) as TrpcError;
-  assert.equal(body.error.data.httpStatus, 401);
+  const error = await readError(response);
+  assert.equal(error.data.httpStatus, 401);
 });
