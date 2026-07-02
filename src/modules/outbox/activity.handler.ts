@@ -1,4 +1,8 @@
 import { Inject, Injectable, type OnModuleInit } from '@nestjs/common';
+import {
+  type OutboxHandlerResult,
+  OutboxRegistry,
+} from '@nest-native/messaging/in-process';
 import { ActivityService } from '../activity/activity.service';
 import {
   taskAssignedActivity,
@@ -13,10 +17,6 @@ import {
   OUTBOX_TOPIC_TASK_COMPLETED,
   OUTBOX_TOPIC_TASK_CREATED,
 } from './outbox.constants';
-import {
-  type OutboxHandlerResult,
-  OutboxRegistry,
-} from './outbox-registry.service';
 
 /**
  * In-process (default profile) counterpart to {@link UserInvitedHandler}: it

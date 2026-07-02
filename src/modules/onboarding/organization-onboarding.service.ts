@@ -92,7 +92,7 @@ export class OrganizationOnboardingService {
     };
     const event = this.outbox.enqueue({
       topic: OUTBOX_TOPIC_USER_INVITED,
-      payload: payload as unknown as Record<string, unknown>,
+      payload,
       idempotencyKey: `user.invited:${input.orgId}:${user.id}:${project.id}`,
     });
 

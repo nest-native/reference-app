@@ -76,7 +76,7 @@ export class TasksService {
     };
     this.outbox.enqueue({
       topic: OUTBOX_TOPIC_TASK_CREATED,
-      payload: payload as unknown as Record<string, unknown>,
+      payload,
       idempotencyKey: `${OUTBOX_TOPIC_TASK_CREATED}:${org.id}:${task.id}`,
     });
 
@@ -99,7 +99,7 @@ export class TasksService {
     };
     this.outbox.enqueue({
       topic: OUTBOX_TOPIC_TASK_ASSIGNED,
-      payload: payload as unknown as Record<string, unknown>,
+      payload,
       idempotencyKey: `${OUTBOX_TOPIC_TASK_ASSIGNED}:${org.id}:${task.id}:${input.assigneeId}`,
     });
 
@@ -121,7 +121,7 @@ export class TasksService {
     };
     this.outbox.enqueue({
       topic: OUTBOX_TOPIC_TASK_COMPLETED,
-      payload: payload as unknown as Record<string, unknown>,
+      payload,
       idempotencyKey: `${OUTBOX_TOPIC_TASK_COMPLETED}:${org.id}:${task.id}`,
     });
 

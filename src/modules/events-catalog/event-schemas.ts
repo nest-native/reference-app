@@ -1,140 +1,68 @@
 import type {
-  AsyncApiSchemaObject,
   AsyncApiServerOptions,
-  JsonSchemaSource,
+  ZodSchemaSource,
 } from '@nest-native/asyncapi';
+import { z } from 'zod';
+import {
+  taskAssignedPayloadSchema,
+  taskCompletedPayloadSchema,
+  taskCreatedPayloadSchema,
+  userInvitedPayloadSchema,
+} from '../outbox/outbox.constants';
 
 /**
- * JSON-schema source of truth for the domain-event catalog.
+ * Schema sources for the domain-event catalog.
  *
- * This app is Zod/interface-based, not `class-validator`-based, so the catalog
- * documents its payloads with hand-written JSON Schema ({@link JsonSchemaSource})
- * rather than `@nestjs/swagger` DTO classes — no extra runtime dependency is
- * pulled in. Each schema mirrors the matching payload interface in
- * `src/modules/outbox/outbox.constants.ts`; keep the two in sync when a payload
- * changes. The shapes are draft-07-compatible JSON Schema, which is the dialect
- * AsyncAPI 3.0 uses for message `payload` and `headers`.
+ * The payload contracts are defined ONCE — as the Zod schemas in
+ * `src/modules/outbox/outbox.constants.ts` that also drive the runtime guards —
+ * and passed straight to `@AsyncApiMessage` as `{ name, schema }` sources.
+ * `@nest-native/asyncapi` converts them natively with Zod 4's
+ * `z.toJSONSchema()` (draft-7, the dialect AsyncAPI 3.0 uses), so the catalog
+ * can never drift from what producers enqueue and consumers validate.
  */
-
-/** An integer field (the tenant/entity ids are all integer primary keys). */
-function intField(description: string): AsyncApiSchemaObject {
-  return { type: 'integer', description };
-}
-
-/** A string field, optionally carrying a JSON Schema `format`. */
-function stringField(
-  description: string,
-  format?: string,
-): AsyncApiSchemaObject {
-  return format
-    ? { type: 'string', format, description }
-    : { type: 'string', description };
-}
-
-/** Mirrors `UserInvitedPayload`. */
-export const userInvitedSchema: AsyncApiSchemaObject = {
-  type: 'object',
-  title: 'UserInvitedPayload',
-  description: 'Emitted when a user is invited to an organization project.',
-  properties: {
-    invitedEmail: stringField('Email address the invitation was sent to', 'email'),
-    invitedUserId: intField('Id of the newly-invited user'),
-    invitedByUserId: intField('Id of the user who sent the invitation'),
-    orgId: intField('Tenant (organization) the invitation belongs to'),
-    projectId: intField('Project the user was invited to'),
-  },
-  required: [
-    'invitedEmail',
-    'invitedUserId',
-    'invitedByUserId',
-    'orgId',
-    'projectId',
-  ],
-};
-
-/** Mirrors `TaskCreatedPayload`. */
-export const taskCreatedSchema: AsyncApiSchemaObject = {
-  type: 'object',
-  title: 'TaskCreatedPayload',
-  description: 'Emitted when a task is created in a project.',
-  properties: {
-    taskId: intField('Id of the created task'),
-    orgId: intField('Tenant (organization) the task belongs to'),
-    projectId: intField('Project the task belongs to'),
-    title: stringField('Human-readable task title'),
-    createdBy: intField('Id of the user who created the task'),
-  },
-  required: ['taskId', 'orgId', 'projectId', 'title', 'createdBy'],
-};
-
-/** Mirrors `TaskAssignedPayload`. */
-export const taskAssignedSchema: AsyncApiSchemaObject = {
-  type: 'object',
-  title: 'TaskAssignedPayload',
-  description: 'Emitted when a task is assigned to a user.',
-  properties: {
-    taskId: intField('Id of the assigned task'),
-    orgId: intField('Tenant (organization) the task belongs to'),
-    projectId: intField('Project the task belongs to'),
-    assigneeId: intField('Id of the user the task was assigned to'),
-    assignedBy: intField('Id of the user who assigned the task'),
-  },
-  required: ['taskId', 'orgId', 'projectId', 'assigneeId', 'assignedBy'],
-};
-
-/** Mirrors `TaskCompletedPayload`. */
-export const taskCompletedSchema: AsyncApiSchemaObject = {
-  type: 'object',
-  title: 'TaskCompletedPayload',
-  description: 'Emitted when a task is marked complete.',
-  properties: {
-    taskId: intField('Id of the completed task'),
-    orgId: intField('Tenant (organization) the task belongs to'),
-    projectId: intField('Project the task belongs to'),
-    completedBy: intField('Id of the user who completed the task'),
-  },
-  required: ['taskId', 'orgId', 'projectId', 'completedBy'],
-};
 
 /**
  * The wire headers every event carries, set by the Kafka outbox transport in
  * `@nest-native/messaging`. Both are always present, so both are required.
+ * This is a transport concern (not an outbox payload contract), so the schema
+ * lives here with the catalog rather than in `outbox.constants.ts`.
  */
-export const eventHeadersSchema: AsyncApiSchemaObject = {
-  type: 'object',
-  title: 'EventHeaders',
-  description:
-    'Wire headers set on every published event by the transactional-outbox ' +
-    'Kafka transport. The Kafka message key is `x-idempotency-key` (falling ' +
-    'back to `x-event-id`), giving per-entity ordering and the value the ' +
-    "consumer's inbox deduplicates on.",
-  properties: {
-    'x-event-id': stringField(
-      'Unique producer-assigned id of this event (most stable dedup input)',
-    ),
-    'x-idempotency-key': stringField(
-      'Business idempotency key, e.g. `task.created:<orgId>:<taskId>`',
-    ),
-  },
-  required: ['x-event-id', 'x-idempotency-key'],
-};
+export const eventHeadersSchema = z
+  .object({
+    'x-event-id': z
+      .string()
+      .describe(
+        'Unique producer-assigned id of this event (most stable dedup input)',
+      ),
+    'x-idempotency-key': z
+      .string()
+      .describe('Business idempotency key, e.g. `task.created:<orgId>:<taskId>`'),
+  })
+  .meta({
+    title: 'EventHeaders',
+    description:
+      'Wire headers set on every published event by the transactional-outbox ' +
+      'Kafka transport. The Kafka message key is `x-idempotency-key` (falling ' +
+      'back to `x-event-id`), giving per-entity ordering and the value the ' +
+      "consumer's inbox deduplicates on.",
+  });
 
-/** Message payload sources (name → JSON Schema) referenced by the handlers. */
-export const userInvitedMessageSource: JsonSchemaSource = {
+/** Message payload sources (name → Zod schema) referenced by the handlers. */
+export const userInvitedMessageSource: ZodSchemaSource = {
   name: 'UserInvited',
-  schema: userInvitedSchema,
+  schema: userInvitedPayloadSchema,
 };
-export const taskCreatedMessageSource: JsonSchemaSource = {
+export const taskCreatedMessageSource: ZodSchemaSource = {
   name: 'TaskCreated',
-  schema: taskCreatedSchema,
+  schema: taskCreatedPayloadSchema,
 };
-export const taskAssignedMessageSource: JsonSchemaSource = {
+export const taskAssignedMessageSource: ZodSchemaSource = {
   name: 'TaskAssigned',
-  schema: taskAssignedSchema,
+  schema: taskAssignedPayloadSchema,
 };
-export const taskCompletedMessageSource: JsonSchemaSource = {
+export const taskCompletedMessageSource: ZodSchemaSource = {
   name: 'TaskCompleted',
-  schema: taskCompletedSchema,
+  schema: taskCompletedPayloadSchema,
 };
 
 /**
@@ -142,7 +70,7 @@ export const taskCompletedMessageSource: JsonSchemaSource = {
  * deduplicates structurally-identical schemas by name), so every message
  * references the same `EventHeaders` definition.
  */
-export const eventHeadersSource: JsonSchemaSource = {
+export const eventHeadersSource: ZodSchemaSource = {
   name: 'EventHeaders',
   schema: eventHeadersSchema,
 };
