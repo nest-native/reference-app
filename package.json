@@ -53,6 +53,7 @@
     "nestjs-cls": "^6.2.1",
     "reflect-metadata": "0.2.2",
     "rxjs": "7.8.2",
+    "superjson": "^2.2.6",
     "zod": "4.4.3"
   },
   "optionalDependencies": {

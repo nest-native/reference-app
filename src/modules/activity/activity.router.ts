@@ -14,7 +14,10 @@ const ActivityEventSchema = z.object({
   actorUserId: z.number().nullable(),
   summary: z.string(),
   dedupKey: z.string(),
-  createdAt: z.string(),
+  // A real `Date` on the API contract (the read model stores ISO-8601 text).
+  // The superjson transformer keeps it a `Date` instance across the wire —
+  // without it, JSON would silently degrade it to a string.
+  createdAt: z.date(),
 });
 
 const ListActivityInputSchema = z.object({
@@ -41,6 +44,8 @@ export class ActivityRouter {
     if (!this.currentOrg) {
       throw new NotFoundException('No active organization for this session');
     }
-    return this.service.list(this.currentOrg.id, projectId);
+    return this.service
+      .list(this.currentOrg.id, projectId)
+      .map((event) => ({ ...event, createdAt: new Date(event.createdAt) }));
   }
 }

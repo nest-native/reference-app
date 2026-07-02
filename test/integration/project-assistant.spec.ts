@@ -5,6 +5,8 @@ import { join } from 'node:path';
 import { after, before, test } from 'node:test';
 import type { INestApplication } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import superjson from 'superjson';
+import type { SuperJSONResult } from 'superjson';
 import { OutboxClaimer } from '@nest-native/messaging';
 import { seedDatabase } from '../../scripts/seed';
 
@@ -22,8 +24,10 @@ let token: string;
 let projectId: number;
 let adminId: number;
 
-interface TrpcSuccess<T> {
-  result: { data: T };
+// The server runs `transformer: superjson`, so raw tRPC payloads are
+// superjson envelopes in both directions.
+interface TrpcSuccess {
+  result: { data: SuperJSONResult };
 }
 
 const authHeaders = (): Record<string, string> => ({
@@ -34,10 +38,11 @@ async function trpcMutation<T>(proc: string, input: unknown): Promise<T> {
   const r = await fetch(`${baseUrl}${trpcPath}/${proc}`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', ...authHeaders() },
-    body: JSON.stringify(input),
+    body: JSON.stringify(superjson.serialize(input)),
   });
   assert.equal(r.status, 200, `POST ${proc} expected 200`);
-  return ((await r.json()) as TrpcSuccess<T>).result.data;
+  const body = (await r.json()) as TrpcSuccess;
+  return superjson.deserialize<T>(body.result.data);
 }
 
 // Reconstruct the streamed text from the AI SDK UI-message SSE frames: keep the
@@ -78,9 +83,11 @@ before(async () => {
   const login = (await fetch(`${baseUrl}${trpcPath}/auth.login`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ email: 'admin@acme.test', password: 'admin123!' }),
-  }).then((r) => r.json())) as TrpcSuccess<{ token: string }>;
-  token = login.result.data.token;
+    body: JSON.stringify(
+      superjson.serialize({ email: 'admin@acme.test', password: 'admin123!' }),
+    ),
+  }).then((r) => r.json())) as TrpcSuccess;
+  token = superjson.deserialize<{ token: string }>(login.result.data).token;
 
   // A full task lifecycle enqueues 3 outbox events (created/assigned/completed).
   const created = await trpcMutation<{ id: number }>('tasks.create', {

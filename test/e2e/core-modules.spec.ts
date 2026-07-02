@@ -5,6 +5,8 @@ import { join } from 'node:path';
 import { after, before, test } from 'node:test';
 import type { INestApplication } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import superjson from 'superjson';
+import type { SuperJSONResult } from 'superjson';
 import { seedDatabase } from '../../scripts/seed';
 
 const trpcPath = '/trpc';
@@ -14,32 +16,46 @@ let token: string;
 
 const auth = () => ({ authorization: `Bearer ${token}` });
 
-interface TrpcSuccess<T> { result: { data: T } }
-interface TrpcError { error: { data: { httpStatus: number } } }
+// The server runs `transformer: superjson`, so raw HTTP payloads are
+// superjson envelopes in both directions (inputs serialized, outputs and
+// errors deserialized).
+interface TrpcSuccess { result: { data: SuperJSONResult } }
+interface TrpcError { error: SuperJSONResult }
+interface TrpcErrorShape { data: { httpStatus: number } }
 
 async function get<T>(path: string): Promise<T> {
   const r = await fetch(`${baseUrl}${trpcPath}/${path}`, { headers: auth() });
   assert.equal(r.status, 200, `GET ${path} expected 200`);
-  return ((await r.json()) as TrpcSuccess<T>).result.data;
+  const body = (await r.json()) as TrpcSuccess;
+  return superjson.deserialize<T>(body.result.data);
 }
 
 async function getWithInput<T>(path: string, input: unknown): Promise<T> {
-  const encoded = encodeURIComponent(JSON.stringify(input));
+  const encoded = encodeURIComponent(
+    JSON.stringify(superjson.serialize(input)),
+  );
   const r = await fetch(`${baseUrl}${trpcPath}/${path}?input=${encoded}`, {
     headers: auth(),
   });
   assert.equal(r.status, 200, `GET ${path} expected 200`);
-  return ((await r.json()) as TrpcSuccess<T>).result.data;
+  const body = (await r.json()) as TrpcSuccess;
+  return superjson.deserialize<T>(body.result.data);
 }
 
 async function postMutation<T>(path: string, body: unknown): Promise<T> {
   const r = await fetch(`${baseUrl}${trpcPath}/${path}`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', ...auth() },
-    body: JSON.stringify(body),
+    body: JSON.stringify(superjson.serialize(body)),
   });
   assert.equal(r.status, 200, `POST ${path} expected 200`);
-  return ((await r.json()) as TrpcSuccess<T>).result.data;
+  const responseBody = (await r.json()) as TrpcSuccess;
+  return superjson.deserialize<T>(responseBody.result.data);
+}
+
+async function readError(r: Response): Promise<TrpcErrorShape> {
+  const body = (await r.json()) as TrpcError;
+  return superjson.deserialize<TrpcErrorShape>(body.error);
 }
 
 before(async () => {
@@ -61,9 +77,11 @@ before(async () => {
   const login = await fetch(`${baseUrl}${trpcPath}/auth.login`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ email: 'admin@acme.test', password: 'admin123!' }),
-  }).then((r) => r.json()) as TrpcSuccess<{ token: string }>;
-  token = login.result.data.token;
+    body: JSON.stringify(
+      superjson.serialize({ email: 'admin@acme.test', password: 'admin123!' }),
+    ),
+  }).then((r) => r.json()) as TrpcSuccess;
+  token = superjson.deserialize<{ token: string }>(login.result.data).token;
 });
 
 after(async () => {
@@ -134,26 +152,34 @@ test('projects.get fetches a project by id within the current org', async () => 
 test('projects.get returns httpStatus 404 for an unknown id', async () => {
   const r = await fetch(
     `${baseUrl}${trpcPath}/projects.get?input=${encodeURIComponent(
-      JSON.stringify({ id: 999_999 }),
+      JSON.stringify(superjson.serialize({ id: 999_999 })),
     )}`,
     { headers: auth() },
   );
-  const body = (await r.json()) as TrpcError;
-  assert.equal(body.error.data.httpStatus, 404);
+  const error = await readError(r);
+  assert.equal(error.data.httpStatus, 404);
 });
 
 test('organizations.current without auth returns httpStatus 401', async () => {
   const r = await fetch(`${baseUrl}${trpcPath}/organizations.current`);
-  const body = (await r.json()) as TrpcError;
-  assert.equal(body.error.data.httpStatus, 401);
+  const error = await readError(r);
+  assert.equal(error.data.httpStatus, 401);
 });
 
 test('projects.create without auth returns httpStatus 401', async () => {
   const r = await fetch(`${baseUrl}${trpcPath}/projects.create`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ name: 'Unauthorized' }),
+    body: JSON.stringify(superjson.serialize({ name: 'Unauthorized' })),
   });
-  const body = (await r.json()) as TrpcError;
-  assert.equal(body.error.data.httpStatus, 401);
+  const error = await readError(r);
+  assert.equal(error.data.httpStatus, 401);
+});
+
+test('successful tenant-scoped queries are never publicly cacheable', async () => {
+  // responseMeta only marks the public ping query — authed, tenant-scoped
+  // reads must not carry a public cache header even when they succeed.
+  const r = await fetch(`${baseUrl}${trpcPath}/users.me`, { headers: auth() });
+  assert.equal(r.status, 200);
+  assert.equal(r.headers.get('cache-control'), null);
 });
