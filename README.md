@@ -3,10 +3,10 @@
 <p>
   <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/license-MIT-green.svg" alt="License" /></a>
   <img src="https://img.shields.io/badge/node-%3E%3D22-brightgreen.svg" alt="Node version" />
-  <img src="https://img.shields.io/badge/libraries-6%2F6-0f766e.svg" alt="All six nest-native libraries" />
+  <img src="https://img.shields.io/badge/libraries-7%2F7-0f766e.svg" alt="All seven nest-native libraries" />
 </p>
 
-A production-shaped **multi-tenant work-tracking SaaS** — think a small Linear/Asana — that puts **all six [nest-native](https://github.com/nest-native) libraries** under realistic backend pressure and composes them the way a real product would: persistence, a typed API, reliable domain events, an event backbone, a documented event catalog, and a streaming AI assistant.
+A production-shaped **multi-tenant work-tracking SaaS** — think a small Linear/Asana — that puts **all seven [nest-native](https://github.com/nest-native) libraries** under realistic backend pressure and composes them the way a real product would: persistence, a typed API, reliable domain events, an event backbone, deferred background jobs, a documented event catalog, and a streaming AI assistant.
 
 It is not a product. It **serves the libraries** — a credible demo a team could adapt, and a feedback loop: if something feels awkward here, that's signal to add API in a separate PR to the relevant library (that's how, for example, `MessagingModule.forRoot`'s `imports` option and `KafkaInboxConsumer`'s `dedupKey` argument came to exist).
 
@@ -17,10 +17,11 @@ Follow one journey through the code and every library shows up where a real syst
 1. **An org invites a teammate.** `OrganizationOnboardingService.inviteUser()` writes the user + membership + project rows **and** enqueues a `user.invited` event — all in one transaction.
 2. **They open a project and work tasks.** Create → assign → complete a task; each writes the task row **and** emits a `task.created` / `task.assigned` / `task.completed` domain event **in the same transaction** (no lost events, no phantom events).
 3. **The events flow over Kafka.** A background claimer relays committed events to the broker; consumers turn them into an **activity feed** read-model — deduplicated, so an at-least-once redelivery never double-counts.
-4. **The event contracts are published.** An **AsyncAPI 3.0 catalog** at `/asyncapi` documents every event so another team could subscribe to your streams.
-5. **AI reads the activity.** A streaming **project assistant** turns a project's recent activity into a status update, token by token.
+4. **Assigning schedules a reminder.** The same delivery that projects `task.assigned` into the feed also enqueues a delayed **assignment-reminder job** — in the same transaction, keyed by the event's dedup key — and the worker fires it exactly once when due. The queue is a table in the same database; no Redis.
+5. **The event contracts are published.** An **AsyncAPI 3.0 catalog** at `/asyncapi` documents every event so another team could subscribe to your streams.
+6. **AI reads the activity.** A streaming **project assistant** turns a project's recent activity into a status update, token by token.
 
-## Six libraries, six chapters
+## Seven libraries, seven chapters
 
 | Library | Its job in the story | Where in the code |
 | --- | --- | --- |
@@ -28,6 +29,7 @@ Follow one journey through the code and every library shows up where a real syst
 | [`@nest-native/trpc`](https://github.com/nest-native/trpc) | **The typed API** — task CRUD, project queries, the activity feed, all typesafe end-to-end; the superjson transformer keeps the feed's `Date`s real across the wire (the client link is *required* to match, at compile time), and failed validations reach the client as flattened Zod field errors (`error.data.zodError`) | `src/modules/*/**.router.ts` (`@Router`, `@Query`/`@Mutation`), `src/trpc/` (transformer, error formatting, response meta), generated `AppRouter` |
 | [`@nest-native/messaging`](https://github.com/nest-native/messaging) | **Reliable domain events** — the transactional outbox (emit in-tx) + idempotent inbox (dedup on consume) | `src/modules/{outbox,inbox,activity}/`, `OutboxProducer.enqueue` inside `@Transactional()` |
 | [`@nest-native/kafka`](https://github.com/nest-native/kafka) | **The event backbone** — the outbox relays through `KafkaOutboxTransport`; `@KafkaConsumer`s build read-models | the Kafka profile in `src/app.module.ts`, `src/modules/inbox/*.consumer.ts` |
+| [`@nest-native/jobs`](https://github.com/nest-native/jobs) | **Deferred work** — the assignment reminder: enqueued in the same transaction as the `task.assigned` projection (`uniqueKey` = the event's dedup key), executed exactly once by the worker | `src/modules/reminders/`, `TaskAssignedProjection` in `src/modules/activity/`, `src/database/schema/jobs.ts` |
 | [`@nest-native/asyncapi`](https://github.com/nest-native/asyncapi) | **The event catalog** — an AsyncAPI 3.0 doc so other teams integrate with your streams | `src/modules/events-catalog/`, served at `/asyncapi` from `src/main.ts` |
 | [`@nest-native/ai-sdk`](https://github.com/nest-native/ai-sdk) | **AI over your data** — a streaming assistant that summarizes a project's activity | `src/modules/assistant/` (`@AiStream`), `POST /projects/:projectId/assistant` |
 
@@ -63,7 +65,7 @@ The API listens on `http://localhost:3000`:
 | AsyncAPI catalog (UI / JSON / YAML) | `/asyncapi`, `/asyncapi-json`, `/asyncapi-yaml` |
 | AI project assistant (SSE stream) | `POST /projects/:projectId/assistant` |
 
-The seed creates `admin@acme.test` / `admin123!` with a starter org + project. The AI assistant streams from an **offline mock model** by default; set `OPENAI_API_KEY` to swap in a real provider (`@ai-sdk/openai`) with no code change. Run the outbox worker as its own process with `npm run start:worker`.
+The seed creates `admin@acme.test` / `admin123!` with a starter org + project. The AI assistant streams from an **offline mock model** by default; set `OPENAI_API_KEY` to swap in a real provider (`@ai-sdk/openai`) with no code change. Run the background worker — the outbox relay **and** the jobs queue in one process — with `npm run start:worker`.
 
 ## Walking the journey (curl)
 
@@ -72,6 +74,8 @@ The seed creates `admin@acme.test` / `admin123!` with a starter org + project. T
 #    (use the typed client in client-smoke/ for a real end-to-end example)
 # 2. the outbox worker relays events; the activity feed fills up:
 #    trpc: activity.list({ projectId })
+#    (assigning also scheduled a deferred reminder job — the worker fires it
+#     when due; tune with TASK_REMINDER_DELAY_MS)
 # 3. inspect the event catalog other teams would integrate against:
 curl localhost:3000/asyncapi-json | jq '.channels | keys'   # user.invited, task.created, task.assigned, task.completed
 # 4. stream an AI status update for the project's activity:
@@ -94,11 +98,12 @@ src/
     activity/                          the event-fed activity feed read-model + router
     onboarding/                        OrganizationOnboardingService — the @Transactional invite flow
     outbox/ inbox/                     the messaging pair (in-process handlers + Kafka consumers)
+    reminders/                         the @nest-native/jobs chapter — the deferred assignment reminder
     events-catalog/                    @nest-native/asyncapi event declarations
     assistant/                         @nest-native/ai-sdk streaming project assistant
     audit-log/ memberships/            supporting services
   trpc/                    TrpcModule.forRoot + routers + generated AppRouter
-test/integration/          real-DB tests (node:test) — task workflow, dedup, asyncapi, AI stream
+test/integration/          real-DB tests (node:test) — task workflow, dedup, reminder job, asyncapi, AI stream
 client-smoke/              typed tRPC client over the generated AppRouter
 docs/architecture.md       one-sitting tour
 ```
@@ -111,7 +116,7 @@ npm run test:cov      # with c8 coverage
 npm run ci            # typecheck, lint, complexity (≤15), test:cov, security:audit, build
 ```
 
-Coverage here is **pragmatic, not 100%** — the 100% bar belongs to the libraries. The transactional workflow, the outbox worker, the inbox dedup, the AsyncAPI catalog, and the AI stream all have explicit tests. CI runs on **Node 22**.
+Coverage here is **pragmatic, not 100%** — the 100% bar belongs to the libraries. The transactional workflow, the outbox worker, the inbox dedup, the reminder job's exactly-once scheduling and execution, the AsyncAPI catalog, and the AI stream all have explicit tests. CI runs on **Node 22**.
 
 ## Compatibility
 
