@@ -9,10 +9,12 @@ import type { INestApplicationContext } from '@nestjs/common';
 // GATED end-to-end against a LIVE broker. Skipped unless KAFKA_BROKERS is set,
 // so it never runs in plain CI. To run it locally:
 //
-//   docker compose up redpanda   # (uncomment the redpanda service first)
-//   KAFKA_BROKERS=localhost:19092 \
-//   KAFKA_TOPIC_PREFIX=reliable-e2e. \
-//     npm test -- test/integration/reliable-messaging.kafka.spec.ts
+//   npm run infra:up      # compose `redpanda` service (profile `kafka`), waits for health
+//   npm run test:kafka    # this file, with KAFKA_BROKERS=localhost:19092 and
+//                         # KAFKA_TOPIC_PREFIX=reliable-e2e. set for you
+//   npm run infra:down    # removes the broker and its volume
+//
+// (`npm run test:full` chains the base suite and this file.)
 //
 // It exercises the full pair: a transactional enqueue → the claimer publishes to
 // Kafka → the consumer deduplicates and writes ONE audit row → a forced
@@ -90,15 +92,23 @@ const inboxCount = (key: string) =>
     .where(drizzleOps.eq(schema.inboxEvents.messageKey, key))
     .all().length;
 
-// Poll until the consumer has written the delivery audit row, capped.
-async function waitForDelivery(
+// Publish-until-delivered. A fresh consumer group starts at `latest`, and
+// joining + assignment on a fresh broker takes a few seconds — a record
+// published right after `app.init()` (the claimer's) always lands *before*
+// the consumer is assigned, so it is invisible to that group forever. Nudging
+// with the same wire message is safe by design: the dedup key keeps the inbox
+// exactly-once no matter how many copies land, which is exactly the property
+// this suite exists to prove.
+async function nudgeUntilDelivered(
   subjectId: string,
-  capMs = 10_000,
+  republish: () => Promise<unknown>,
+  capMs = 30_000,
 ): Promise<void> {
   const deadline = Date.now() + capMs;
   while (Date.now() < deadline) {
     if (deliveredAuditCount(subjectId) >= 1) return;
-    await delay(100);
+    await republish();
+    await delay(1_000);
   }
 }
 
@@ -114,36 +124,45 @@ test(
       initialPassword: 'reliable-pass-1234',
     });
     const subjectId = String(invited.user.id);
-    // The producer/consumer key is the outbox idempotency key.
+    // The Kafka message key (and `x-idempotency-key` header) is the outbox
+    // idempotency key…
     const dedupKey = `user.invited:${seededOrgId}:${invited.user.id}:${invited.project.id}`;
+    // …but the inbox dedups on the wire contract's first hit, `x-event-id`
+    // (the outbox row id), so that is the messageKey it stores.
+    const inboxKey = invited.outboxEventId;
+
+    // The same wire message the claimer publishes; used to nudge past the
+    // group-assignment race and to force the redelivery below.
+    const republish = () =>
+      producer.send({
+        topic: TOPIC,
+        messages: [
+          {
+            key: dedupKey,
+            value: JSON.stringify({
+              invitedEmail: 'reliable.e2e@acme.test',
+              invitedUserId: invited.user.id,
+              invitedByUserId: seededAdminId,
+              orgId: seededOrgId,
+              projectId: invited.project.id,
+            }),
+            headers: { 'x-event-id': invited.outboxEventId, 'x-idempotency-key': dedupKey },
+          },
+        ],
+      });
 
     // The claimer publishes the pending outbox row to Kafka.
     const report = await claimer.tick();
     assert.equal(report.claimed, 1);
     assert.equal(report.completed, 1);
 
-    await waitForDelivery(subjectId);
+    await nudgeUntilDelivered(subjectId, republish);
     assert.equal(deliveredAuditCount(subjectId), 1, 'consumer delivered once');
-    assert.equal(inboxCount(dedupKey), 1, 'one inbox dedup row');
+    assert.equal(inboxCount(inboxKey), 1, 'one inbox dedup row');
 
     // Force a redelivery by re-publishing the same message to the topic. The
     // inbox must deduplicate it: the audit row count and inbox row count stay 1.
-    await producer.send({
-      topic: TOPIC,
-      messages: [
-        {
-          key: dedupKey,
-          value: JSON.stringify({
-            invitedEmail: 'reliable.e2e@acme.test',
-            invitedUserId: invited.user.id,
-            invitedByUserId: seededAdminId,
-            orgId: seededOrgId,
-            projectId: invited.project.id,
-          }),
-          headers: { 'x-event-id': invited.outboxEventId, 'x-idempotency-key': dedupKey },
-        },
-      ],
-    });
+    await republish();
     await delay(2_000);
 
     assert.equal(
@@ -151,6 +170,6 @@ test(
       1,
       'redelivery did NOT write a second audit row',
     );
-    assert.equal(inboxCount(dedupKey), 1, 'still exactly one inbox row');
+    assert.equal(inboxCount(inboxKey), 1, 'still exactly one inbox row');
   },
 );

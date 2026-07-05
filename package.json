@@ -32,7 +32,16 @@
     "client-smoke:typecheck": "tsc --noEmit -p client-smoke/tsconfig.json",
     "start": "node dist/main.js",
     "start:dev": "tsx watch src/main.ts",
-    "ci": "npm run typecheck && npm run client-smoke:typecheck && npm run lint && npm run complexity:check && npm run test:cov && npm run security:audit && npm run build"
+    "ci": "npm run typecheck && npm run client-smoke:typecheck && npm run lint && npm run complexity:check && npm run test:cov && npm run security:audit && npm run build",
+    "infra:up": "AUTH_SECRET=${AUTH_SECRET:-infra-only-placeholder} docker compose --profile kafka up -d --wait redpanda",
+    "infra:down": "AUTH_SECRET=${AUTH_SECRET:-infra-only-placeholder} docker compose --profile kafka down -v redpanda",
+    "test:kafka": "KAFKA_BROKERS=localhost:19092 KAFKA_TOPIC_PREFIX=reliable-e2e. node --import tsx --test test/integration/reliable-messaging.kafka.spec.ts",
+    "test:full": "npm run test && npm run test:kafka",
+    "test:mutation": "stryker run",
+    "test:mutation:full": "stryker run --force",
+    "test:mutant": "node --import tsx --test --test-force-exit test/integration/*.spec.ts test/e2e/*.spec.ts",
+    "test:kafka:mutant": "KAFKA_BROKERS=localhost:19092 KAFKA_TOPIC_PREFIX=reliable-e2e. node --import tsx --test --test-force-exit test/integration/reliable-messaging.kafka.spec.ts",
+    "test:mutant:full": "npm run test:mutant && npm run test:kafka:mutant"
   },
   "dependencies": {
     "@nest-native/ai-sdk": "^0.5.0",
@@ -63,6 +72,7 @@
   },
   "devDependencies": {
     "@asyncapi/parser": "^3.6.0",
+    "@stryker-mutator/core": "^9.6.1",
     "@trpc/client": "^11.18.0",
     "@types/better-sqlite3": "7.6.13",
     "@types/node": "26.0.1",

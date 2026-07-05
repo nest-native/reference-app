@@ -6,6 +6,19 @@ added them.
 
 ## [Unreleased]
 
+### Added — local full-mode verification & mutation testing (repo tooling)
+
+- The `redpanda` service in `docker-compose.yml` is now first-class (gated
+  behind the `kafka` compose profile, so plain `docker compose up` still
+  means SQLite + in-process messaging): `npm run infra:up`/`infra:down`
+  start/remove a disposable broker on `127.0.0.1:19092`, `npm run test:kafka`
+  runs the gated reliable-messaging e2e against it, and `npm run test:full`
+  chains the base suite plus that spec. Stryker mutation testing is available
+  via `npm run test:mutation` (incremental) / `test:mutation:full`, with
+  `STRYKER_MUTATE` scoping and `STRYKER_WITH_INFRA=1` for broker-inclusive
+  runs. All of it is opt-in and local-only — CI is unchanged and Docker-free.
+  Details in README "Testing & quality gates".
+
 ### Changed — official better-sqlite3 transaction support
 
 - Bumped `@nestjs-cls/transactional-adapter-drizzle-orm` to `^1.3.0` and

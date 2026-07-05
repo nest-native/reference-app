@@ -70,9 +70,11 @@ function messagingImports(): NonNullable<ModuleMetadata['imports']> {
         client: { brokers: kafkaEnv.brokers },
         // Idempotent producer + acks=all: the outbox already gives us
         // at-least-once; idempotence keeps a producer retry from duplicating a
-        // partition write, and acks=all waits for the full ISR before the
-        // claimer marks the row completed.
-        producer: { 'enable.idempotence': true, acks: 'all' },
+        // partition write, and acks=all (-1) waits for the full ISR before the
+        // claimer marks the row completed. Keys are kafkajs-style — the config
+        // lands in the Confluent client's `kafkaJS` block, which rejects raw
+        // librdkafka keys like 'enable.idempotence'.
+        producer: { idempotent: true, acks: -1 },
       }),
     }),
     UserInvitedInboxModule,

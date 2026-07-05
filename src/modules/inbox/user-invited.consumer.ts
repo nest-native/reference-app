@@ -20,7 +20,8 @@ import {
 // The topic/group/prefix are resolved from env at class-definition time because
 // `@KafkaConsumer` takes a static topic. `loadEnv()` is a pure env read and is
 // safe to call always; this consumer is only *registered* (and only runs) under
-// the Kafka profile, via UserInvitedInboxModule + KafkaModule.forFeature.
+// the Kafka profile, as a provider of UserInvitedInboxModule (the transport's
+// explorer discovers @KafkaConsumer providers in any module).
 const kafkaEnv = loadEnv().kafka;
 const TOPIC_PREFIX = kafkaEnv?.topicPrefix ?? '';
 const GROUP_ID = kafkaEnv?.groupId ?? 'reference-app';

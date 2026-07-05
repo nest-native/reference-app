@@ -118,6 +118,63 @@ npm run ci            # typecheck, lint, complexity (≤15), test:cov, security:
 
 Coverage here is **pragmatic, not 100%** — the 100% bar belongs to the libraries. The transactional workflow, the outbox worker, the inbox dedup, the reminder job's exactly-once scheduling and execution, the AsyncAPI catalog, and the AI stream all have explicit tests. CI runs on **Node 22**.
 
+### Local full-mode verification (optional infra + mutation testing)
+
+Everything in this subsection is **opt-in and local-only**. Plain `npm test`
+and CI run without Docker — the live-Kafka e2e self-skips, and forks work out
+of the box. **CI never runs any of this** (neither the broker-backed spec nor
+mutation testing); it is an on-demand local gate, and that is deliberate.
+
+**Gated live-Kafka e2e (real Redpanda broker):**
+
+```bash
+npm run infra:up      # disposable Redpanda broker on 127.0.0.1:19092 (compose profile `kafka`)
+npm run test:full     # base suite (SQLite, in-process messaging) + the live-Kafka spec
+npm run test:kafka    # just the live-Kafka spec
+npm run infra:down    # removes the broker container and volume
+```
+
+- `infra:up` starts only the `redpanda` service from `docker-compose.yml` and
+  waits for its healthcheck (a few seconds).
+- `test:kafka` runs `test/integration/reliable-messaging.kafka.spec.ts` with
+  `KAFKA_BROKERS=localhost:19092` and `KAFKA_TOPIC_PREFIX=reliable-e2e.` set
+  for that spec only. It proves the Reliable Messaging Pair end to end: a
+  transactional enqueue → the outbox claimer publishes to Kafka → the inbox
+  consumer deduplicates → exactly one audit row, even after a forced
+  redelivery.
+- Do **not** export `KAFKA_BROKERS` globally around the base `npm run test`:
+  setting it flips the whole app into the Kafka messaging profile and breaks
+  the in-process integration specs. `test:full` keeps the two halves isolated
+  for you.
+
+**Mutation testing (Stryker — local only, never in CI):**
+
+```bash
+npm run test:mutation        # incremental run (cache: reports/stryker-incremental.json)
+npm run test:mutation:full   # every mutant from scratch (--force)
+```
+
+- `STRYKER_MUTATE='src/modules/audit-log/**,src/config/env.ts'` —
+  comma-separated globs to scope a run to the files a change touched.
+- `STRYKER_WITH_INFRA=1` — each mutant also runs the live-Kafka spec
+  (`npm run infra:up` first; concurrency is forced to 1 because the spec
+  shares the one broker). Slow by design; use it for messaging-adjacent
+  changes.
+- Report: `reports/mutation/mutation.html`. Thresholds are advisory
+  (`break: null`) — the signal is *which mutants survive*, not the score.
+- Per-mutant runs use `test:mutant`/`test:kafka:mutant` (the normal commands
+  plus `--test-force-exit`) so a mutant that breaks teardown dies instead of
+  hanging into a timeout.
+
+**AI agents working on this repo**: when Docker is available, run
+`npm run infra:up && npm run test:full` before opening a PR that touches
+`src/`, and report the result (including the live-Kafka spec) in the PR body;
+when Docker is not available, run `npm test` and state that the live-Kafka
+spec was skipped. Pre-PR ritual for `src/` changes: `npm run test:mutation`
+(scope with `STRYKER_MUTATE` when the change is small), look at surviving
+mutants, and mention the outcome in the PR body. Never wire any of this into
+CI — CI stays fast and Docker-free, and forks are unaffected.
+
 ## Compatibility
 
 | | Supported line |

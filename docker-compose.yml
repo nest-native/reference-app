@@ -12,20 +12,26 @@
 #                           `drizzle-orm/better-sqlite3` for `drizzle-orm/pg`
 #                           (see docs/architecture.md).
 #
-#   Kafka (recipe):         uncomment the `redpanda` service and the
-#                           KAFKA_BROKERS line under `api:`/`worker:`. Setting
-#                           KAFKA_BROKERS is the single opt-in switch: the outbox
-#                           claimer then publishes to Kafka and the inbox
-#                           consumers subscribe (the Reliable Messaging Pair).
-#                           Redpanda is a single-binary, Kafka-API-compatible
-#                           broker — no ZooKeeper. With it commented out the
-#                           default stack stays SQLite + in-process.
+#   Kafka:                  the `redpanda` service is first-class but gated
+#                           behind the `kafka` profile, so this default stack
+#                           stays SQLite + in-process. `npm run infra:up`
+#                           starts just the broker for the gated e2e spec
+#                           (`npm run test:full` / `npm run test:kafka`;
+#                           `npm run infra:down` cleans up). To run the whole
+#                           stack on the Reliable Messaging Pair, uncomment
+#                           the KAFKA_BROKERS lines under `api:`/`worker:`
+#                           and use `docker compose --profile kafka up`.
+#                           Setting KAFKA_BROKERS is the single opt-in switch:
+#                           the outbox claimer then publishes to Kafka and the
+#                           inbox consumers subscribe. Redpanda is a
+#                           single-binary, Kafka-API-compatible broker — no
+#                           ZooKeeper.
 #
 # Stack:
 #   - api      → exposes :3000, runs migrations on start
 #   - worker   → long-running outbox poller, no port exposed
 #   - (postgres → optional)
-#   - (redpanda → optional, Kafka API)
+#   - (redpanda → profile `kafka`, Kafka API)
 
 services:
   api:
@@ -97,31 +103,36 @@ services:
   #     timeout: 3s
   #     retries: 5
 
-  # redpanda:
-  #   # Single-binary, Kafka-API-compatible broker (no ZooKeeper). Uncomment this
-  #   # plus the KAFKA_BROKERS lines under api/worker to run the Reliable
-  #   # Messaging Pair: the outbox publishes here and the inbox consumers
-  #   # subscribe. `redpanda:9092` is the in-network listener the app connects to.
-  #   image: redpandadata/redpanda:v24.2.7
-  #   command:
-  #     - redpanda
-  #     - start
-  #     - --smp=1
-  #     - --overprovisioned
-  #     - --node-id=0
-  #     - --kafka-addr=PLAINTEXT://0.0.0.0:9092,EXTERNAL://0.0.0.0:19092
-  #     - --advertise-kafka-addr=PLAINTEXT://redpanda:9092,EXTERNAL://localhost:19092
-  #   ports:
-  #     - "19092:19092"   # host listener: KAFKA_BROKERS=localhost:19092 for the gated e2e
-  #   healthcheck:
-  #     test: ["CMD-SHELL", "rpk cluster health | grep -q 'Healthy:.*true'"]
-  #     interval: 5s
-  #     timeout: 3s
-  #     retries: 10
-  #   volumes:
-  #     - redpanda-data:/var/lib/redpanda/data
+  redpanda:
+    # Single-binary, Kafka-API-compatible broker (no ZooKeeper). Gated behind
+    # the `kafka` profile so plain `docker compose up` keeps the SQLite
+    # default; `npm run infra:up` starts just this service for the gated
+    # reliable-messaging e2e. To run api/worker against it, uncomment the
+    # KAFKA_BROKERS lines above and use `docker compose --profile kafka up`.
+    # `redpanda:9092` is the in-network listener the app containers connect
+    # to; host clients (the gated spec) use `localhost:19092`.
+    image: redpandadata/redpanda:v24.2.7
+    container_name: nest-reference-app-redpanda
+    profiles: ["kafka"]
+    command:
+      - redpanda
+      - start
+      - --smp=1
+      - --overprovisioned
+      - --node-id=0
+      - --kafka-addr=PLAINTEXT://0.0.0.0:9092,EXTERNAL://0.0.0.0:19092
+      - --advertise-kafka-addr=PLAINTEXT://redpanda:9092,EXTERNAL://localhost:19092
+    ports:
+      - "127.0.0.1:19092:19092"   # host listener: KAFKA_BROKERS=localhost:19092 for the gated e2e
+    healthcheck:
+      test: ["CMD-SHELL", "rpk cluster health | grep -q 'Healthy:.*true'"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    volumes:
+      - redpanda-data:/var/lib/redpanda/data
 
 volumes:
   reference-app-data:
   # postgres-data:
-  # redpanda-data:
+  redpanda-data:
