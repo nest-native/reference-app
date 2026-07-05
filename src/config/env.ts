@@ -27,6 +27,8 @@ export interface AppEnv {
     stuckTimeoutMs: number;
     workerInstanceId: string | undefined;
   };
+  /** Delay before the assignment-reminder job runs (0 = due immediately). */
+  taskReminderDelayMs: number;
   // Optional: present (and `enabled`) only when KAFKA_BROKERS is set. With it
   // unset the app stays in-process and this block is undefined — Kafka off is
   // byte-for-byte the default behaviour.
@@ -79,6 +81,18 @@ function readIntFromEnv(name: string, fallback: number): number {
   return parsed;
 }
 
+// Unlike readIntFromEnv, zero is meaningful here: a 0ms reminder delay means
+// "due immediately" (jobs' delayMs contract), which tests rely on.
+function readNonNegativeIntFromEnv(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (!raw) return fallback;
+  const parsed = Number.parseInt(raw, 10);
+  if (Number.isNaN(parsed) || parsed < 0) {
+    throw new Error(`Invalid ${name}: ${raw}`);
+  }
+  return parsed;
+}
+
 // KAFKA_BROKERS is the single opt-in switch: set it and the Kafka profile turns
 // on (the app publishes the outbox to Kafka and runs the inbox consumers);
 // leave it unset and this returns undefined so the app stays in-process.
@@ -117,6 +131,10 @@ export function loadEnv(): AppEnv {
       stuckTimeoutMs: readIntFromEnv('OUTBOX_STUCK_TIMEOUT_MS', 60_000),
       workerInstanceId: process.env.OUTBOX_WORKER_ID,
     },
+    taskReminderDelayMs: readNonNegativeIntFromEnv(
+      'TASK_REMINDER_DELAY_MS',
+      60_000,
+    ),
     ...(kafka ? { kafka } : {}),
   };
 }

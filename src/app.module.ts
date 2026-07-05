@@ -3,6 +3,8 @@ import { ClsPluginTransactional } from '@nestjs-cls/transactional';
 import { TransactionalAdapterDrizzleOrm } from '@nestjs-cls/transactional-adapter-drizzle-orm';
 import { ClsModule } from 'nestjs-cls';
 import { getDrizzleClientToken } from '@nest-native/drizzle';
+import { JobsModule } from '@nest-native/jobs';
+import { SqliteJobStore } from '@nest-native/jobs/sqlite';
 import { KafkaModule, KafkaProducerService } from '@nest-native/kafka';
 import { MessagingModule } from '@nest-native/messaging';
 import {
@@ -24,6 +26,7 @@ import { TaskActivityInboxModule } from './modules/inbox/task-activity-inbox.mod
 import { UserInvitedInboxModule } from './modules/inbox/user-invited-inbox.module';
 import { InProcessOutboxModule } from './modules/outbox/in-process-outbox.module';
 import { OnboardingModule } from './modules/onboarding/onboarding.module';
+import { RemindersModule } from './modules/reminders/reminders.module';
 import { OrganizationsModule } from './modules/organizations/organizations.module';
 import { ProjectsModule } from './modules/projects/projects.module';
 import { TasksModule } from './modules/tasks/tasks.module';
@@ -111,6 +114,15 @@ function messagingImports(): NonNullable<ModuleMetadata['imports']> {
     AuthModule,
     RequestContextModule,
     AuditLogModule,
+    // Deferred work runs on the same wiring under BOTH messaging profiles: the
+    // jobs engine resolves the global drizzle client token directly, enqueue
+    // joins whatever CLS transaction is open, and the claimer runs in the
+    // background worker (scripts/start-worker.ts).
+    JobsModule.forRoot({
+      drizzleInstanceToken,
+      store: new SqliteJobStore(),
+    }),
+    RemindersModule,
     ...messagingImports(),
     OrganizationsModule,
     UsersModule,
