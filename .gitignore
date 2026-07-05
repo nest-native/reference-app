@@ -27,3 +27,7 @@ src/@generated/
 .idea/
 
 .devcontainer/
+
+# Mutation testing (local only)
+/.stryker-tmp/
+/reports/

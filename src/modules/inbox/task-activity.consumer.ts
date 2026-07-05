@@ -27,7 +27,7 @@ import {
 
 // Topics/group resolved from env at class-definition time (like UserInvitedConsumer):
 // the decorators take static strings, and this consumer is only registered under
-// the Kafka profile via TaskActivityInboxModule + KafkaModule.forFeature.
+// the Kafka profile, as a provider of TaskActivityInboxModule.
 const kafkaEnv = loadEnv().kafka;
 const TOPIC_PREFIX = kafkaEnv?.topicPrefix ?? '';
 const GROUP_ID = kafkaEnv?.groupId ?? 'reference-app';
