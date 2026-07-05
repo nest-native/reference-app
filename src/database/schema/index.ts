@@ -1,6 +1,7 @@
 import { activityEvents } from './activity';
 import { auditEvents } from './audit-events';
 import { inboxEvents } from './inbox-events';
+import { jobs } from './jobs';
 import { memberships } from './memberships';
 import { organizations } from './organizations';
 import { outboxEvents } from './outbox-events';
@@ -18,12 +19,14 @@ export const schema = {
   auditEvents,
   outboxEvents,
   inboxEvents,
+  jobs,
 };
 
 export {
   activityEvents,
   auditEvents,
   inboxEvents,
+  jobs,
   memberships,
   organizations,
   outboxEvents,
@@ -35,6 +38,8 @@ export type { ActivityEvent, NewActivityEvent } from './activity';
 export type { InboxEvent, InboxStatus, NewInboxEvent } from './inbox-events';
 export { INBOX_STATUSES } from './inbox-events';
 export type { AuditEvent, NewAuditEvent } from './audit-events';
+export type { Job, JobStatus, NewJob } from './jobs';
+export { JOB_STATUSES } from './jobs';
 export type {
   Membership,
   MembershipRole,

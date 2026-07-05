@@ -5,10 +5,10 @@ import {
 } from '@nest-native/messaging/in-process';
 import { ActivityService } from '../activity/activity.service';
 import {
-  taskAssignedActivity,
   taskCompletedActivity,
   taskCreatedActivity,
 } from '../activity/task-activity.projection';
+import { TaskAssignedProjection } from '../activity/task-assigned-projection.service';
 import {
   isTaskAssignedPayload,
   isTaskCompletedPayload,
@@ -23,14 +23,18 @@ import {
  * routes the task lifecycle events the claimer drains into the activity feed.
  * Each topic gets its own registry handler that validates the payload (a malformed
  * one is a permanent failure the claimer marks `failed`) and applies the shared
- * projection. The feed's own `(org_id, dedup_key)` unique index keeps a re-tick
- * idempotent, so this handler needs no dedup bookkeeping of its own.
+ * projection — `task.assigned` through {@link TaskAssignedProjection}, which
+ * also schedules the assignment reminder in the same transaction. The feed's
+ * own `(org_id, dedup_key)` unique index keeps a re-tick idempotent, so this
+ * handler needs no dedup bookkeeping of its own.
  */
 @Injectable()
 export class ActivityHandler implements OnModuleInit {
   constructor(
     @Inject(OutboxRegistry) private readonly registry: OutboxRegistry,
     @Inject(ActivityService) private readonly activity: ActivityService,
+    @Inject(TaskAssignedProjection)
+    private readonly taskAssigned: TaskAssignedProjection,
   ) {}
 
   onModuleInit(): void {
@@ -53,11 +57,13 @@ export class ActivityHandler implements OnModuleInit {
     return 'completed';
   }
 
-  private onAssigned(payload: Record<string, unknown>): OutboxHandlerResult {
+  private async onAssigned(
+    payload: Record<string, unknown>,
+  ): Promise<OutboxHandlerResult> {
     if (!isTaskAssignedPayload(payload)) {
       throw new Error('task.assigned: malformed payload');
     }
-    this.activity.record(taskAssignedActivity(payload));
+    await this.taskAssigned.apply(payload);
     return 'completed';
   }
 
