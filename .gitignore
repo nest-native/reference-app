@@ -19,6 +19,9 @@ AI_CODING_GUIDELINES.md
 # Generated tRPC schema
 src/@generated/
 
+# Local scratch files (announcement drafts etc.) — never committed
+/_*.md
+
 # Editor
 .vscode/
 .idea/
