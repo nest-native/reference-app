@@ -137,7 +137,11 @@ npm run infra:down    # removes the broker container and volume
   in-process integration specs. `test:full` keeps the two halves isolated for
   you.
 
-### Mutation testing (Stryker — local only, never in CI)
+### Mutation testing (Stryker — occasional targeted audit, local only, never in CI)
+
+Run it **deliberately, scoped to a file whose logic you reworked** — not on
+every PR (full-source mutation is a non-goal here, per Rule 3). The useful
+signal is *which mutants survive* on the file you touched.
 
 ```bash
 npm run test:mutation        # incremental run (cache: reports/stryker-incremental.json)
@@ -155,14 +159,22 @@ npm run test:mutation:full   # every mutant from scratch (--force)
   plus `--test-force-exit`) so a mutant that breaks teardown dies instead of
   hanging into a timeout.
 
+**Verify a kill without re-running Stryker — the fast path.** Hand-apply the
+surviving mutation to the source, run the plain suite (or just the one spec),
+confirm your new test fails, then `git checkout --` to revert. This decouples
+the slow "find survivors" step from a fast "prove the kill" step. If a run times
+out, `kill -9` any leftover `stryker` processes before retrying — a killed run
+can leave detached test processes that starve the next one.
+
 ### AI agents working on this repo
 
 - When Docker is available, run `npm run infra:up && npm run test:full` before
   opening a PR that touches `src/`, and report the result (including the
   live-Kafka spec) in the PR body. When Docker is not available, run `npm test`
   and state that the live-Kafka spec was skipped.
-- Pre-PR ritual for `src/` changes: `npm run test:mutation` (scope with
-  `STRYKER_MUTATE` when the change is small), look at surviving mutants, and
-  mention the outcome in the PR body.
+- Mutation testing is an **occasional, targeted audit — not a per-PR gate**.
+  When you've reworked a file's logic, scope `STRYKER_MUTATE` to it and verify
+  kills by hand-applying the mutation + running the suite; note anything found
+  in the PR body. Do not run it routinely.
 - Never wire any of this into CI — CI stays fast and Docker-free, and forks are
   unaffected.
