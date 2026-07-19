@@ -1,6 +1,13 @@
-import { Inject, Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  HttpException,
+  HttpStatus,
+  Inject,
+  Injectable,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { eq } from 'drizzle-orm';
 import { InjectDrizzle } from '@nest-native/drizzle';
+import { LockoutService } from '@nest-native/lockout';
 import type { AppDatabase } from '../database/database';
 import { memberships, users } from '../database/schema';
 import { AUTH_CONFIG, type AuthConfig } from './auth.config';
@@ -25,17 +32,45 @@ export class AuthService {
   constructor(
     @InjectDrizzle() private readonly db: AppDatabase,
     @Inject(AUTH_CONFIG) private readonly config: AuthConfig,
+    // Explicit token like every other provider here: esbuild/tsx doesn't emit
+    // `design:paramtypes`, so this app never relies on type-based DI.
+    @Inject(LockoutService) private readonly lockout: LockoutService,
   ) {}
 
-  login(input: LoginInput): LoginResult {
+  async login(
+    input: LoginInput,
+    ip: string | undefined,
+  ): Promise<LoginResult> {
+    // Lock by email OR source IP. `email` is a custom identity dimension; the IP
+    // comes from the tRPC context (see trpc.module.ts) — do NOT trust proxy
+    // headers unless the platform's `trust proxy` is configured for them.
+    const identity = { email: input.email, ip };
+
+    // Pre-auth gate: reject a locked identity before touching the credential.
+    const gate = await this.lockout.check(identity);
+    if (gate.locked) {
+      // @nest-native/trpc maps this HttpException to a TRPCError('TOO_MANY_REQUESTS').
+      throw new HttpException(
+        {
+          statusCode: HttpStatus.TOO_MANY_REQUESTS,
+          error: 'Too Many Requests',
+          message: 'Too many failed login attempts. Try again later.',
+          retryAfterMs: gate.retryAfterMs,
+        },
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+
     const user = this.db
       .select()
       .from(users)
       .where(eq(users.email, input.email))
       .get();
     if (!user || !verifyPassword(input.password, user.passwordHash)) {
+      await this.lockout.reportFailure(identity);
       throw new UnauthorizedException('Invalid email or password');
     }
+    await this.lockout.reportSuccess(identity);
 
     const membership = this.db
       .select()

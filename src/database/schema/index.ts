@@ -2,6 +2,7 @@ import { activityEvents } from './activity';
 import { auditEvents } from './audit-events';
 import { inboxEvents } from './inbox-events';
 import { jobs } from './jobs';
+import { lockoutAttempts } from './lockout-attempts';
 import { memberships } from './memberships';
 import { organizations } from './organizations';
 import { outboxEvents } from './outbox-events';
@@ -20,6 +21,7 @@ export const schema = {
   outboxEvents,
   inboxEvents,
   jobs,
+  lockoutAttempts,
 };
 
 export {
@@ -27,6 +29,7 @@ export {
   auditEvents,
   inboxEvents,
   jobs,
+  lockoutAttempts,
   memberships,
   organizations,
   outboxEvents,
@@ -40,6 +43,7 @@ export { INBOX_STATUSES } from './inbox-events';
 export type { AuditEvent, NewAuditEvent } from './audit-events';
 export type { Job, JobStatus, NewJob } from './jobs';
 export { JOB_STATUSES } from './jobs';
+export type { LockoutAttempt, NewLockoutAttempt } from './lockout-attempts';
 export type {
   Membership,
   MembershipRole,

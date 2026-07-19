@@ -3,10 +3,10 @@
 <p>
   <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/license-MIT-green.svg" alt="License" /></a>
   <img src="https://img.shields.io/badge/node-%3E%3D22-brightgreen.svg" alt="Node version" />
-  <img src="https://img.shields.io/badge/libraries-7%2F7-0f766e.svg" alt="All seven nest-native libraries" />
+  <img src="https://img.shields.io/badge/libraries-8%2F8-0f766e.svg" alt="All eight nest-native libraries" />
 </p>
 
-A production-shaped **multi-tenant work-tracking SaaS** — think a small Linear/Asana — that puts **all seven [nest-native](https://github.com/nest-native) libraries** under realistic backend pressure and composes them the way a real product would: persistence, a typed API, reliable domain events, an event backbone, deferred background jobs, a documented event catalog, and a streaming AI assistant.
+A production-shaped **multi-tenant work-tracking SaaS** — think a small Linear/Asana — that puts **all eight [nest-native](https://github.com/nest-native) libraries** under realistic backend pressure and composes them the way a real product would: persistence, a typed API, reliable domain events, an event backbone, deferred background jobs, a documented event catalog, a streaming AI assistant, and brute-force login lockout.
 
 It is not a product. It **serves the libraries** — a credible demo a team could adapt, and a feedback loop: if something feels awkward here, that's signal to add API in a separate PR to the relevant library (that's how, for example, `MessagingModule.forRoot`'s `imports` option and `KafkaInboxConsumer`'s `dedupKey` argument came to exist).
 
@@ -21,7 +21,7 @@ Follow one journey through the code and every library shows up where a real syst
 5. **The event contracts are published.** An **AsyncAPI 3.0 catalog** at `/asyncapi` documents every event so another team could subscribe to your streams.
 6. **AI reads the activity.** A streaming **project assistant** turns a project's recent activity into a status update, token by token.
 
-## Seven libraries, seven chapters
+## Eight libraries, eight chapters
 
 | Library | Its job in the story | Where in the code |
 | --- | --- | --- |
@@ -32,6 +32,7 @@ Follow one journey through the code and every library shows up where a real syst
 | [`@nest-native/jobs`](https://github.com/nest-native/jobs) | **Deferred work** — the assignment reminder: enqueued in the same transaction as the `task.assigned` projection (`uniqueKey` = the event's dedup key), executed exactly once by the worker | `src/modules/reminders/`, `TaskAssignedProjection` in `src/modules/activity/`, `src/database/schema/jobs.ts` |
 | [`@nest-native/asyncapi`](https://github.com/nest-native/asyncapi) | **The event catalog** — an AsyncAPI 3.0 doc so other teams integrate with your streams | `src/modules/events-catalog/`, served at `/asyncapi` from `src/main.ts` |
 | [`@nest-native/ai-sdk`](https://github.com/nest-native/ai-sdk) | **AI over your data** — a streaming assistant that summarizes a project's activity | `src/modules/assistant/` (`@AiStream`), `POST /projects/:projectId/assistant` |
+| [`@nest-native/lockout`](https://github.com/nest-native/lockout) | **Brute-force defense** — failed logins lock an identity (by email OR source IP) *before* the credential is checked; a Drizzle-backed counter on the same SQLite DB, `Retry-After` on the lock, reset on success. tRPC has no HTTP body for the guard's extractor to read, so the login handler calls `LockoutService` directly — the library's documented non-HTTP-transport recipe | `src/auth/lockout.setup.ts` (`LockoutModule.forRootAsync`), `src/auth/auth.service.ts` (`check` → `reportFailure`/`reportSuccess`) |
 
 Underneath, [`@nestjs-cls/transactional`](https://www.npmjs.com/package/@nestjs-cls/transactional) (with the official Drizzle adapter) ties the outbox write to the business write — its `transactionMode: 'auto'` runs the same `@Transactional()` code against better-sqlite3's synchronous driver locally and an async driver in production.
 
@@ -90,7 +91,7 @@ src/
   app.module.ts            Root module, ClsPluginTransactional, in-process/Kafka messaging profiles
   config/env.ts            loadEnv() — single source of truth (incl. the optional kafka block)
   database/                DrizzleModule wiring + schema (orgs/users/projects/tasks/activity/...) + migrations
-  auth/                    scrypt passwords, HS256 JWT, AuthGuard, middleware
+  auth/                    scrypt passwords, HS256 JWT, AuthGuard, middleware; @nest-native/lockout login lockout (lockout.setup.ts)
   context/                 request-scoped CURRENT_USER / CURRENT_ORGANIZATION
   modules/
     organizations/ users/ projects/    repos + services + tRPC routers (tenant-scoped)
@@ -116,7 +117,7 @@ npm run test:cov      # with c8 coverage
 npm run ci            # typecheck, lint, complexity (≤15), test:cov, security:audit, build
 ```
 
-Coverage here is **pragmatic, not 100%** — the 100% bar belongs to the libraries. The transactional workflow, the outbox worker, the inbox dedup, the reminder job's exactly-once scheduling and execution, the AsyncAPI catalog, and the AI stream all have explicit tests. CI runs on **Node 22**.
+Coverage here is **pragmatic, not 100%** — the 100% bar belongs to the libraries. The transactional workflow, the outbox worker, the inbox dedup, the reminder job's exactly-once scheduling and execution, the AsyncAPI catalog, the AI stream, and the login-lockout gate (fail N times → 429, even the right password is refused while locked) all have explicit tests. CI runs on **Node 22**.
 
 Two **optional, local-only** layers sit on top (neither runs in CI, and forks
 work without them):
@@ -141,6 +142,7 @@ ritual, and agent instructions — in
 | NestJS | `11.x` |
 | `@nest-native/drizzle` | `0.3.x` · `@nest-native/trpc` `0.6.x` · `@nest-native/kafka` `0.2.x` |
 | `@nest-native/messaging` | `0.2.x` · `@nest-native/asyncapi` `0.1.x` · `@nest-native/ai-sdk` `0.4.x` (on `ai@7`) |
+| `@nest-native/lockout` | `0.3.x` (on `@authlock/core` `0.3.x`) |
 | Drizzle ORM | `0.45.x` · `@nestjs-cls/transactional` `^3` |
 
 ## Philosophy

@@ -27,8 +27,11 @@ export class AuthRouter {
   constructor(@Inject(AuthService) private readonly auth: AuthService) {}
 
   @Mutation({ input: LoginInputSchema, output: LoginOutputSchema })
-  login(@Input() input: z.infer<typeof LoginInputSchema>) {
-    return this.auth.login(input);
+  login(
+    @Input() input: z.infer<typeof LoginInputSchema>,
+    @TrpcContext('ip') ip: string | undefined,
+  ) {
+    return this.auth.login(input, ip);
   }
 
   @Query({ output: MeOutputSchema })

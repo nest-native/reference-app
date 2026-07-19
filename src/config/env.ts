@@ -21,6 +21,10 @@ export interface AppEnv {
   trpcPath: string;
   authSecret: string;
   authTtlSeconds: number;
+  /** Login lockout: failures allowed before an identity is locked. */
+  lockoutLimit: number;
+  /** Login lockout: how long a locked identity stays locked, in ms. */
+  lockoutCooloffMs: number;
   outbox: {
     pollIntervalMs: number;
     batchSize: number;
@@ -125,6 +129,8 @@ export function loadEnv(): AppEnv {
     trpcPath: process.env.TRPC_PATH ?? '/trpc',
     authSecret: readAuthSecret(nodeEnv),
     authTtlSeconds: Number.parseInt(process.env.AUTH_TTL_SECONDS ?? '3600', 10),
+    lockoutLimit: readIntFromEnv('LOCKOUT_LIMIT', 5),
+    lockoutCooloffMs: readIntFromEnv('LOCKOUT_COOLOFF_MS', 15 * 60_000),
     outbox: {
       pollIntervalMs: readIntFromEnv('OUTBOX_POLL_MS', 2_000),
       batchSize: readIntFromEnv('OUTBOX_BATCH_SIZE', 32),
