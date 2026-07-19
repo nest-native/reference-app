@@ -10,9 +10,10 @@ import { AuthGuard } from './auth.guard';
 import { AuthMiddleware } from './auth.middleware';
 import { AuthRouter } from './auth.router';
 import { AuthService } from './auth.service';
+import { AppLockoutModule } from './lockout.setup';
 
 @Module({
-  imports: [DatabaseModule],
+  imports: [DatabaseModule, AppLockoutModule],
   providers: [
     {
       provide: AUTH_CONFIG,

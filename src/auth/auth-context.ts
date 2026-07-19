@@ -15,5 +15,8 @@ export interface AuthContext {
 
 export interface AuthenticatedRequest {
   headers: Record<string, string | string[] | undefined>;
+  /** Connection address (populated by the HTTP platform). NOT a proxy header. */
+  ip?: string;
+  socket?: { remoteAddress?: string };
   authContext?: AuthContext;
 }

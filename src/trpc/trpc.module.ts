@@ -15,6 +15,8 @@ const env = loadEnv();
 
 export interface AppTrpcContext {
   authContext: AuthContext | null;
+  /** Source IP, exposed so the login procedure can key lockout on it. */
+  ip: string | undefined;
 }
 
 const logger = new Logger('Trpc');
@@ -34,6 +36,7 @@ const PUBLIC_CACHEABLE_QUERIES = new Set(['ping']);
       autoSchemaFile: join(process.cwd(), 'src/@generated/server.ts'),
       createContext: ({ req }: { req: AuthenticatedRequest }) => ({
         authContext: req.authContext ?? null,
+        ip: req.ip ?? req.socket?.remoteAddress,
       }),
 
       // superjson (de)serializes every payload, so `Date` fields — e.g. the
