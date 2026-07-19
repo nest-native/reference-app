@@ -21,6 +21,8 @@ src/@generated/
 
 # Local scratch files (announcement drafts etc.) — never committed
 /_*.md
+# Local scratch directory (dev.to drafts, notes, throwaway scripts) — never committed
+/tmp/
 
 # Editor
 .vscode/
