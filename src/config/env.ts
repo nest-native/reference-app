@@ -25,6 +25,10 @@ export interface AppEnv {
   lockoutLimit: number;
   /** Login lockout: how long a locked identity stays locked, in ms. */
   lockoutCooloffMs: number;
+  /** Read cache: TTL for cached reads, in ms (the delivery backstop). */
+  cacheTtlMs: number;
+  /** Read cache: unix-socket path for cross-process invalidation (app + worker). Unset = in-process only. */
+  cacheSocketPath: string | undefined;
   outbox: {
     pollIntervalMs: number;
     batchSize: number;
@@ -131,6 +135,8 @@ export function loadEnv(): AppEnv {
     authTtlSeconds: Number.parseInt(process.env.AUTH_TTL_SECONDS ?? '3600', 10),
     lockoutLimit: readIntFromEnv('LOCKOUT_LIMIT', 5),
     lockoutCooloffMs: readIntFromEnv('LOCKOUT_COOLOFF_MS', 15 * 60_000),
+    cacheTtlMs: readIntFromEnv('CACHE_TTL_MS', 30_000),
+    cacheSocketPath: process.env.CACHE_SOCKET_PATH,
     outbox: {
       pollIntervalMs: readIntFromEnv('OUTBOX_POLL_MS', 2_000),
       batchSize: readIntFromEnv('OUTBOX_BATCH_SIZE', 32),

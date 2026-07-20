@@ -1,5 +1,6 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { InjectTransaction } from '@nestjs-cls/transactional';
+import { CacheService } from '@nest-native/cache';
 import { and, desc, eq } from 'drizzle-orm';
 import type { AppDatabase } from '../../database/database';
 import { type ActivityEvent, activityEvents } from '../../database/schema';
@@ -23,10 +24,13 @@ export interface RecordActivityInput {
  */
 @Injectable()
 export class ActivityService {
-  constructor(@InjectTransaction() private readonly db: AppDatabase) {}
+  constructor(
+    @InjectTransaction() private readonly db: AppDatabase,
+    @Inject(CacheService) private readonly cache: CacheService,
+  ) {}
 
   record(input: RecordActivityInput): ActivityEvent | undefined {
-    return this.db
+    const row = this.db
       .insert(activityEvents)
       .values({
         orgId: input.orgId,
@@ -42,6 +46,16 @@ export class ActivityService {
       })
       .returning()
       .get();
+    if (row && row.projectId !== null) {
+      // Evict the project's cached feed everywhere a row was actually written
+      // (duplicates are no-ops and evict nothing). Fire-and-forget: `record`
+      // stays synchronous for the better-sqlite3 transaction it runs inside,
+      // and the sync driver means no other request can interleave mid-tx, so
+      // the pre-commit timing is not observable here; on an async driver this
+      // would move to an after-commit hook, with the TTL as the backstop.
+      void this.cache.invalidateTags([`project:${row.projectId}:activity`]);
+    }
+    return row;
   }
 
   list(orgId: number, projectId: number): ActivityEvent[] {

@@ -32,6 +32,7 @@ import { ProjectsModule } from './modules/projects/projects.module';
 import { TasksModule } from './modules/tasks/tasks.module';
 import { UsersModule } from './modules/users/users.module';
 import { AppTrpcModule } from './trpc/trpc.module';
+import { AppCacheModule } from './cache/cache.setup';
 
 // Reliable-messaging wiring, now built on `@nest-native/messaging`. Kafka is an
 // opt-in profile: with KAFKA_BROKERS unset, the engine's claimer publishes
@@ -97,6 +98,7 @@ function messagingImports(): NonNullable<ModuleMetadata['imports']> {
 @Module({
   imports: [
     DatabaseModule,
+    AppCacheModule,
     ClsModule.forRoot({
       global: true,
       plugins: [
