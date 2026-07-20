@@ -191,6 +191,42 @@ Password hashing is `scrypt` with a 16-byte random salt; format is
 `scrypt$<salt-hex>$<hash-hex>`. The same helpers are reused by
 [`scripts/seed.ts`](https://github.com/nest-native/reference-app/blob/main/scripts/seed.ts) so seeded users can log in.
 
+## Login lockout
+
+The auth flow is hardened with [`@nest-native/lockout`](https://github.com/nest-native/lockout)
+(the `@authlock/core` engine). `AuthService.login` gates **before** the
+credential check: `lockout.check({ email, ip })` throws a 429 (mapped by
+`@nest-native/trpc` to `TOO_MANY_REQUESTS`) when either the email or the
+source IP has crossed `LOCKOUT_LIMIT` failures; otherwise a failed
+verification calls `reportFailure` and a success calls `reportSuccess`.
+The counters live in a Drizzle table (`lockout_attempts`) on the same SQLite
+database, written on the base connection — deliberately outside the request
+transaction, so a failed attempt is recorded even when the login transaction
+rolls back. Because tRPC carries no HTTP body for a guard to inspect, the
+integration uses `LockoutService` in the handler rather than `LockoutGuard`
+— the library's documented non-HTTP-transport recipe. See
+[`src/auth/lockout.setup.ts`](https://github.com/nest-native/reference-app/blob/main/src/auth/lockout.setup.ts)
+and [`test/e2e/auth-lockout.spec.ts`](https://github.com/nest-native/reference-app/blob/main/test/e2e/auth-lockout.spec.ts)
+(N failures → 429; the correct password is refused while locked).
+
+## Read caching
+
+Expensive reads are cached with [`@nest-native/cache`](https://github.com/nest-native/cache)
+(the `@stalefree/core` engine) at the **router seam** — the services stay
+synchronous and cache-free. `projects.list/get` and `activity.list` wrap
+their loaders with org-scoped keys and **tags**; mutations invalidate by tag:
+`projects.create` evicts the org's project tag, and `ActivityService.record`
+— the projection write site — evicts the project's feed tag, so the
+event-driven feed invalidates its own cache the moment the handler writes a
+row. Every entry carries a TTL (`CACHE_TTL_MS`, default 30s) as the delivery
+backstop. In the default single-process profile the L1 is coherent by
+definition; when the worker runs as a separate process, `CACHE_SOCKET_PATH`
+wires `@stalefree/core/socket`'s unix-socket bus across the split. See
+[`src/cache/cache.setup.ts`](https://github.com/nest-native/reference-app/blob/main/src/cache/cache.setup.ts)
+and [`test/e2e/stalefree-cache.spec.ts`](https://github.com/nest-native/reference-app/blob/main/test/e2e/stalefree-cache.spec.ts)
+(a ten-minute TTL makes any missed invalidation glaring — freshness within
+seconds proves the tags did the work, not expiry).
+
 ## The central transactional workflow
 
 Brief §7's "single proof": `users.invite` writes across **five tables**
