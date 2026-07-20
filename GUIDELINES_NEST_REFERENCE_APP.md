@@ -1,11 +1,11 @@
 # GUIDELINES_NEST_REFERENCE_APP.md
 
-## Core Philosophy - This app SERVES the eight nest-native libraries
+## Core Philosophy - This app SERVES the nine nest-native libraries
 
 This is `nest-native/reference-app`: a production-shaped, multi-tenant
-work-tracking SaaS whose only job is to put **all eight
+work-tracking SaaS whose only job is to put **all nine
 [nest-native](https://github.com/nest-native) libraries** — `drizzle`, `trpc`,
-`messaging`, `kafka`, `jobs`, `asyncapi`, `ai-sdk`, and `lockout` — under
+`messaging`, `kafka`, `jobs`, `asyncapi`, `ai-sdk`, `lockout`, and `cache` — under
 realistic backend pressure and show how they compose. It is **read first and
 run second**. Every decision optimizes for a reader who wants to lift a pattern
 into their own app.
@@ -15,10 +15,10 @@ app's constitution.
 
 ### 1. What This App Is (and Is Not)
 
-- It **serves the libraries**. Every module exists to exercise one of the eight
+- It **serves the libraries**. Every module exists to exercise one of the nine
   under realistic pressure — persistence, a typed API, reliable domain events,
   an event backbone, deferred jobs, a documented event catalog, a streaming AI
-  assistant, and brute-force login lockout.
+  assistant, brute-force login lockout, and tag-invalidated read caching.
 - It is **not** a product, **not** a starter or scaffold, and **not** a generic
   NestJS boilerplate. There is no CLI, no second frontend, no multi-database
   story, no GraphQL — those are deliberate omissions, not gaps to fill.
