@@ -4,7 +4,7 @@ import { TransactionalAdapterDrizzleOrm } from '@nestjs-cls/transactional-adapte
 import { ClsModule } from 'nestjs-cls';
 import { getDrizzleClientToken } from '@nest-native/drizzle';
 import { JobsModule } from '@nest-native/jobs';
-import { SqliteJobStore } from '@nest-native/jobs/sqlite';
+import { SqliteJobStore, SqliteScheduleStore } from '@nest-native/jobs/sqlite';
 import { KafkaModule, KafkaProducerService } from '@nest-native/kafka';
 import { MessagingModule } from '@nest-native/messaging';
 import {
@@ -125,6 +125,9 @@ function messagingImports(): NonNullable<ModuleMetadata['imports']> {
     JobsModule.forRoot({
       drizzleInstanceToken,
       store: new SqliteJobStore(),
+      // Opt in to DB-stored cron schedules; without this the claimer never
+      // touches the job_schedules table. See RemindersModule for the sweep.
+      scheduleStore: new SqliteScheduleStore(),
     }),
     RemindersModule,
     ...messagingImports(),
