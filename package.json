@@ -62,7 +62,7 @@
     "@stalefree/core": "^0.1.0",
     "@trpc/server": "11.18.0",
     "ai": "^7.0.22",
-    "better-sqlite3": "12.11.1",
+    "better-sqlite3": "13.0.1",
     "drizzle-orm": "0.45.2",
     "nestjs-cls": "^6.2.1",
     "reflect-metadata": "0.2.2",
