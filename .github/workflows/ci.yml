@@ -36,7 +36,12 @@ jobs:
           DATABASE_URL: ./ci.db
 
       - name: Generate tRPC schema
+        # Same database the migration step above just prepared: the generator
+        # boots the whole app, and the app legitimately expects its schema to
+        # exist (RemindersModule declares its cron schedule at bootstrap).
         run: npm run trpc:generate
+        env:
+          DATABASE_URL: ./ci.db
 
       - name: Typecheck
         run: npm run typecheck
