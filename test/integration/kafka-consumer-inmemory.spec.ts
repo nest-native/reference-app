@@ -154,6 +154,9 @@ before(async () => {
 
   app = await NestFactory.createApplicationContext(KafkaInMemoryTestModule, {
     logger: false,
+    // Surface boot failures: Nest otherwise process.exit(1)s and
+    // { logger: false } hides why.
+    abortOnError: false,
   });
   await app.init();
   broker = app.get(kafka.KAFKA_TEST_BROKER);

@@ -60,7 +60,14 @@ before(async () => {
   const { OutboxClaimer } = await import('@nest-native/messaging');
   const { AppModule } = await import('../../src/app.module');
 
-  app = await NestFactory.createApplicationContext(AppModule, { logger: false });
+  app = await NestFactory.createApplicationContext(AppModule, {
+    logger: false,
+    // Without this, Nest\'s ExceptionsZone calls process.exit(1) on a boot
+    // failure and { logger: false } swallows the reason — the spec then
+    // reports a bare "test failed" with no output. Rethrowing instead lets
+    // the before() hook reject with the real error.
+    abortOnError: false,
+  });
   await app.init();
   onboarding = app.get(OrganizationOnboardingService);
   claimer = app.get(OutboxClaimer);

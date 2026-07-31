@@ -82,7 +82,14 @@ before(async () => {
   projectId = seeded.project.id;
 
   const { AppModule } = await import('../../src/app.module');
-  app = await NestFactory.createApplicationContext(AppModule, { logger: false });
+  app = await NestFactory.createApplicationContext(AppModule, {
+    logger: false,
+    // Without this, Nest\'s ExceptionsZone calls process.exit(1) on a boot
+    // failure and { logger: false } swallows the reason — the spec then
+    // reports a bare "test failed" with no output. Rethrowing instead lets
+    // the before() hook reject with the real error.
+    abortOnError: false,
+  });
   // onApplicationBootstrap is what upserts the schedule row.
   await app.init();
   claimer = app.get(JobsClaimer);
