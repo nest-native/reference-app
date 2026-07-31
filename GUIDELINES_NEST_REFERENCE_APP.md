@@ -132,6 +132,15 @@ npm run infra:down    # removes the broker container and volume
   the whole file — even though you are only starting the `redpanda` service —
   and aborts if the variable is unset. The placeholder just satisfies that
   parse-time check; it never reaches the broker.
+- **Native addons after a Node upgrade.** Both `better-sqlite3` and the Kafka
+  driver `@confluentinc/kafka-javascript` ship native binaries, and npm's
+  allow-scripts policy leaves them unbuilt on a fresh install. After changing
+  Node majors they fail with `ERR_DLOPEN_FAILED`
+  (`NODE_MODULE_VERSION <old>` vs `<new>`). Fix:
+  `npm rebuild better-sqlite3` and, for the Kafka driver,
+  `cd node_modules/@confluentinc/kafka-javascript && npx node-pre-gyp install --update-binary`
+  (a plain `npm rebuild` reports success without rebuilding it). Symptom to
+  recognise: the base suite fails wholesale, or `test:kafka` fails at boot.
 - Do **not** export `KAFKA_BROKERS` globally around the base `npm run test`:
   setting it flips the whole app into the Kafka messaging profile and breaks the
   in-process integration specs. `test:full` keeps the two halves isolated for

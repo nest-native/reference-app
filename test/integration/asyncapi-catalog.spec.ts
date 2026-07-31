@@ -51,6 +51,9 @@ before(async () => {
   const { AppModule } = await import('../../src/app.module');
   app = await NestFactory.createApplicationContext(AppModule, {
     logger: false,
+    // Surface boot failures: Nest otherwise process.exit(1)s and
+    // { logger: false } hides why.
+    abortOnError: false,
   });
 
   doc = getAsyncApiDocument(app, {
