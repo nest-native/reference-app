@@ -4,10 +4,19 @@
 // (status, available_at) claim index) — the same precedent as the messaging
 // tables. Row types are derived from the imported table; the status union/const
 // comes from the library core.
-import { jobs } from '@nest-native/jobs/sqlite';
+import { jobs, jobSchedules } from '@nest-native/jobs/sqlite';
 
-export { jobs };
+export { jobs, jobSchedules };
 export { JOB_STATUSES, type JobStatus } from '@nest-native/jobs';
 
 export type Job = typeof jobs.$inferSelect;
 export type NewJob = typeof jobs.$inferInsert;
+
+/**
+ * The `job_schedules` table, imported from the library for the same reason as
+ * `jobs`: the recurring-enqueue engine and the app must agree on byte-identical
+ * DDL (the unique `name` index the upsert keys on, and the
+ * (enabled, next_run_at) index the claimer's due query uses).
+ */
+export type JobSchedule = typeof jobSchedules.$inferSelect;
+export type NewJobSchedule = typeof jobSchedules.$inferInsert;
