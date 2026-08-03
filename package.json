@@ -75,7 +75,7 @@
     "@confluentinc/kafka-javascript": "^1.10.0"
   },
   "devDependencies": {
-    "@asyncapi/parser": "^3.6.0",
+    "@asyncapi/parser": "^3.6.1",
     "@stryker-mutator/core": "^9.6.1",
     "@trpc/client": "^11.18.0",
     "@types/better-sqlite3": "7.6.13",
