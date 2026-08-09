@@ -93,7 +93,8 @@
     "multer": "^2.2.0",
     "@stoplight/spectral-core": {
       "minimatch": "^10.2.5"
-    }
+    },
+    "qs": "^6.15.3"
   },
   "c8": {
     "all": true,
