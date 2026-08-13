@@ -3,10 +3,9 @@ import {
   Module,
   type NestModule,
 } from '@nestjs/common';
-import { DrizzleModule } from '@nest-native/drizzle';
 import { loadEnv } from '../config/env';
 import { DatabaseModule } from '../database/database.module';
-import { MembershipsRepository } from '../modules/memberships/memberships.repository';
+import { MembershipsModule } from '../modules/memberships/memberships.module';
 import { AUTH_CONFIG, type AuthConfig } from './auth.config';
 import { AuthGuard } from './auth.guard';
 import { AuthMiddleware } from './auth.middleware';
@@ -19,8 +18,10 @@ import { RolesGuard } from './roles.guard';
   imports: [
     DatabaseModule,
     AppLockoutModule,
-    // RolesGuard re-reads the caller's membership on every guarded mutation.
-    DrizzleModule.forFeature([MembershipsRepository]),
+    // RolesGuard re-reads the caller's membership on every guarded request, so
+    // the repository is re-exported below: the guard's dependency travels with
+    // the guard into every module that imports AuthModule.
+    MembershipsModule,
   ],
   providers: [
     {
@@ -35,7 +36,7 @@ import { RolesGuard } from './roles.guard';
     RolesGuard,
     AuthRouter,
   ],
-  exports: [AuthService, AuthGuard, RolesGuard],
+  exports: [AuthService, AuthGuard, RolesGuard, MembershipsModule],
 })
 export class AuthModule implements NestModule {
   configure(consumer: MiddlewareConsumer): void {

@@ -2,15 +2,13 @@ import { Module } from '@nestjs/common';
 import { DrizzleModule } from '@nest-native/drizzle';
 import { AuthModule } from '../../auth/auth.module';
 import { RequestContextModule } from '../../context/request-context.module';
-import { MembershipsRepository } from '../memberships/memberships.repository';
 import { ProjectsRepository } from './projects.repository';
 import { ProjectsRouter } from './projects.router';
 import { ProjectsService } from './projects.service';
 
 @Module({
   imports: [
-    // MembershipsRepository is here for RolesGuard on projects.create.
-    DrizzleModule.forFeature([ProjectsRepository, MembershipsRepository]),
+    DrizzleModule.forFeature([ProjectsRepository]),
     AuthModule,
     RequestContextModule,
   ],

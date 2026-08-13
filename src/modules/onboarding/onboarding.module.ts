@@ -2,7 +2,7 @@ import { Module } from '@nestjs/common';
 import { DrizzleModule } from '@nest-native/drizzle';
 import { DatabaseModule } from '../../database/database.module';
 import { AuditLogModule } from '../audit-log/audit-log.module';
-import { MembershipsRepository } from '../memberships/memberships.repository';
+import { MembershipsModule } from '../memberships/memberships.module';
 import { ProjectsRepository } from '../projects/projects.repository';
 import { OrganizationOnboardingService } from './organization-onboarding.service';
 
@@ -17,7 +17,8 @@ import { OrganizationOnboardingService } from './organization-onboarding.service
 @Module({
   imports: [
     DatabaseModule,
-    DrizzleModule.forFeature([MembershipsRepository, ProjectsRepository]),
+    MembershipsModule,
+    DrizzleModule.forFeature([ProjectsRepository]),
     AuditLogModule,
   ],
   providers: [OrganizationOnboardingService],
