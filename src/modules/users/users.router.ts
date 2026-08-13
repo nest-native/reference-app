@@ -3,6 +3,8 @@ import { Input, Mutation, Query, Router, TrpcContext } from '@nest-native/trpc';
 import { z } from 'zod';
 import type { AuthContext } from '../../auth/auth-context';
 import { AuthGuard } from '../../auth/auth.guard';
+import { Roles } from '../../auth/roles.decorator';
+import { RolesGuard } from '../../auth/roles.guard';
 import { OrganizationOnboardingService } from '../onboarding/organization-onboarding.service';
 import { UsersService } from './users.service';
 
@@ -34,7 +36,7 @@ const InviteUserOutputSchema = z.object({
 });
 
 @Router('users')
-@UseGuards(AuthGuard)
+@UseGuards(AuthGuard, RolesGuard)
 export class UsersRouter {
   constructor(
     @Inject(UsersService) private readonly service: UsersService,
@@ -52,6 +54,9 @@ export class UsersRouter {
     return this.service.listInCurrentOrg();
   }
 
+  // Inviting a teammate — including minting another admin — is an admin-only
+  // act; every other procedure here is a read.
+  @Roles('admin')
   @Mutation({ input: InviteUserInputSchema, output: InviteUserOutputSchema })
   async invite(
     @Input() input: z.infer<typeof InviteUserInputSchema>,

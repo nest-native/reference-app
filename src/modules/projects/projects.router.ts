@@ -3,6 +3,8 @@ import { Input, Mutation, Query, Router } from '@nest-native/trpc';
 import { CacheService } from '@nest-native/cache';
 import { z } from 'zod';
 import { AuthGuard } from '../../auth/auth.guard';
+import { Roles } from '../../auth/roles.decorator';
+import { RolesGuard } from '../../auth/roles.guard';
 import type { CurrentOrganizationContext } from '../../auth/auth-context';
 import { CURRENT_ORGANIZATION } from '../../context/request-context.module';
 import { ProjectsService } from './projects.service';
@@ -30,7 +32,7 @@ const GetProjectInputSchema = z.object({
  * precisely. The TTL is only the backstop; the tags do the real work.
  */
 @Router('projects')
-@UseGuards(AuthGuard)
+@UseGuards(AuthGuard, RolesGuard)
 export class ProjectsRouter {
   constructor(
     @Inject(ProjectsService) private readonly service: ProjectsService,
@@ -65,6 +67,7 @@ export class ProjectsRouter {
     );
   }
 
+  @Roles('admin', 'member')
   @Mutation({ input: CreateProjectInputSchema, output: ProjectSchema })
   async create(@Input() input: z.infer<typeof CreateProjectInputSchema>) {
     const project = this.service.create(input);
