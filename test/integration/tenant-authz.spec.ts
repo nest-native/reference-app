@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { after, before, test } from 'node:test';
 import type { INestApplicationContext } from '@nestjs/common';
 import { ContextIdFactory, NestFactory } from '@nestjs/core';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { getDrizzleClientToken } from '@nest-native/drizzle';
 import { hashPassword } from '../../src/auth/password';
 import { AuthService } from '../../src/auth/auth.service';
@@ -18,6 +18,7 @@ import {
   tasks,
   users,
 } from '../../src/database/schema';
+import { OrganizationOnboardingService } from '../../src/modules/onboarding/organization-onboarding.service';
 import { TasksService } from '../../src/modules/tasks/tasks.service';
 import { seedDatabase } from '../../scripts/seed';
 
@@ -33,6 +34,7 @@ const MISSING_ID = 999_999;
 
 let app: INestApplicationContext;
 let tasksService: TasksService;
+let onboarding: OrganizationOnboardingService;
 let auth: AuthService;
 let inspect: AppDatabase;
 let acmeOrgId: number;
@@ -44,6 +46,9 @@ let rivalUserId: number;
 const counts = () => ({
   tasks: inspect.select().from(tasks).all().length,
   outboxEvents: inspect.select().from(outboxEvents).all().length,
+  users: inspect.select().from(users).all().length,
+  memberships: inspect.select().from(memberships).all().length,
+  projects: inspect.select().from(projects).all().length,
 });
 
 /** The id is the only part that may differ between the two error messages. */
@@ -64,6 +69,7 @@ before(async () => {
     abortOnError: false,
   });
   auth = app.get(AuthService);
+  onboarding = app.get(OrganizationOnboardingService);
   inspect = app.get<AppDatabase>(getDrizzleClientToken());
 
   const nowIso = new Date().toISOString();
@@ -230,4 +236,49 @@ test('login puts the OLDEST membership in the token, stably across logins', asyn
 
   assert.equal(first.organization?.id, acmeOrgId);
   assert.deepEqual(second.organization, first.organization);
+});
+
+test('invite refuses an existing account, so no admin can attach another tenant\'s user', async () => {
+  const before = counts();
+
+  const foreignError = await onboarding
+    .inviteUser({
+      orgId: acmeOrgId,
+      invitedByUserId: acmeAdminId,
+      email: 'boss@rival.test',
+      projectName: 'Poached Project',
+      initialPassword: 'poached-pass-12345',
+    })
+    .then(() => undefined)
+    .catch((error: Error) => error);
+  const insiderError = await onboarding
+    .inviteUser({
+      orgId: acmeOrgId,
+      invitedByUserId: acmeAdminId,
+      email: 'admin@acme.test',
+      projectName: 'Duplicate Project',
+      initialPassword: 'duplicate-pass-12345',
+    })
+    .then(() => undefined)
+    .catch((error: Error) => error);
+
+  assert.ok(foreignError instanceof Error);
+  assert.ok(insiderError instanceof Error);
+  assert.equal(
+    foreignError.message,
+    insiderError.message,
+    "the refusal must not reveal which organization an address belongs to",
+  );
+
+  // The RIVAL admin gained no foothold in ACME — which is also what keeps
+  // assignTask's membership predicate from being admin-grantable.
+  const attached = inspect
+    .select()
+    .from(memberships)
+    .where(
+      and(eq(memberships.orgId, acmeOrgId), eq(memberships.userId, rivalUserId)),
+    )
+    .get();
+  assert.equal(attached, undefined);
+  assert.deepEqual(counts(), before, 'a refused invite writes nothing');
 });
