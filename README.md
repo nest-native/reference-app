@@ -51,20 +51,29 @@ Login mints an HS256 JWT that **snapshots one active organization** — the
 caller's *oldest* membership (`created_at`, then `id` as the tiebreak, so
 repeated logins always resolve the same tenant). The token carries no role.
 
-- **Mutations re-check the live membership.** `RolesGuard` composes after
-  `AuthGuard` and reads the caller's role from the database on every procedure
-  that declares `@Roles(...)`: `users.invite` is **admin** only;
-  `tasks.create` / `.assign` / `.complete` and `projects.create` accept
-  **admin or member**; a **viewer** reads only. Revoking a membership therefore
-  blocks the next mutation instead of waiting for the token to expire.
-- **Reads stay token-trusted** for the token's lifetime (`AUTH_TTL_SECONDS`,
-  default 3600 — an invalid value now fails at boot rather than minting tokens
-  that never verify). That trade-off is documented, not hidden.
+- **Every guarded request re-checks the live membership.** `RolesGuard`
+  composes after `AuthGuard` and resolves the caller's membership in the
+  token's organization from the database — **reads included**, so revoking a
+  membership blocks the next request rather than leaving the member roster, the
+  project list, the activity feed and the token-spending AI assistant readable
+  until the token expires.
+- **`@Roles(...)` narrows a procedure further.** `users.invite` is **admin**
+  only; `tasks.create` / `.assign` / `.complete` and `projects.create` accept
+  **admin or member**; a **viewer** reads only. Without `@Roles`, holding any
+  live membership is enough.
+- **The token is a snapshot, never a permission.** It lives for
+  `AUTH_TTL_SECONDS` (default 3600 — an invalid value now fails at boot rather
+  than minting tokens that never verify) and names one organization; every
+  authorization decision is a fresh indexed lookup, deliberately uncached.
 - **Tenancy is proven at the write.** Inside the same transaction,
   `tasks.create` requires the project to belong to the caller's org and
   `tasks.assign` requires the assignee to be a member of it. Both refuse with
   exactly the error a nonexistent id gets, so the API is never a cross-tenant
   existence oracle.
+- **An invite creates a new account, never attaches an existing one.** Joining
+  an organization is the account owner's call, so an admin cannot pull another
+  tenant's user into their org (and then assign work to it); the refusal is the
+  same whether the address is already a member here or a stranger.
 
 > **Password hashing is synchronous.** `src/auth/password.ts` uses `scryptSync`
 > because a short, obviously-correct helper reads better in a reference app —

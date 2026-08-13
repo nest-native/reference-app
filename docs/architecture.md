@@ -150,8 +150,8 @@ service deps through `@Inject(...)` in the constructor and call them.
   │   - or -             │
   │ tRPC handler         │   ←── nest-trpc-native dispatch
   │   AuthGuard          │       reads ctx.authContext via getArgs()[1]
-  │   RolesGuard         │       re-reads the caller's membership role
-  │                      │       (mutations only — see Authorization)
+  │   RolesGuard         │       re-reads the caller's membership row
+  │                      │       (every guarded request — see Authorization)
   │   ParamDecorators    │       @Input, @TrpcContext, @CurrentUser
   │   Procedure body     │
   └──────────────────────┘
@@ -207,13 +207,13 @@ the hash at all.
 
 The token says **who** is calling and **which** organization is active. It
 deliberately says nothing about what the caller may do — that is re-read from
-the database on every mutation:
+the database on every guarded request:
 
 ```
 @Router('tasks')
 @UseGuards(AuthGuard, RolesGuard)   ← composed left to right
 export class TasksRouter {
-  @Query(...)  list(...)            ← no @Roles: token-trusted read
+  @Query(...)  list(...)            ← no @Roles: any live member may read
   @Roles('admin', 'member')
   @Mutation(...) create(...)        ← RolesGuard re-reads the membership row
 }
@@ -225,10 +225,23 @@ time and throws `ForbiddenException` when the membership is missing (revoked)
 or its role is not in the procedure's `@Roles(...)` list. The policy is
 deliberately small — three roles, no policy engine, no per-resource ACLs:
 `users.invite` is `admin` only; `tasks.create` / `.assign` / `.complete` and
-`projects.create` accept `admin` or `member`; `viewer` reads only. Reads carry
-no `@Roles` and stay token-trusted until the TTL lapses, so a revoked member
-loses **mutations** on their next request and **reads** when their token
-expires.
+`projects.create` accept `admin` or `member`; `viewer` reads only.
+
+**Reads are guarded too.** A procedure without `@Roles` still needs a live
+membership: the guard is on every tenant-scoped router (`tasks`, `projects`,
+`users`, `organizations`, `activity`) and on the assistant controller, so a
+revoked account loses the member roster, the project list, the activity feed and
+the token-spending AI digest on its *next* request instead of keeping them for
+up to `AUTH_TTL_SECONDS`. The cost is one indexed lookup per request; it is
+deliberately not cached, because a stale allow is exactly the failure being
+prevented. `auth.me` is the exception — it only echoes the token back.
+
+Because the guard's dependency has to travel with the guard, the single
+`DrizzleModule.forFeature([MembershipsRepository])` registration lives in
+[`MembershipsModule`](https://github.com/nest-native/reference-app/blob/main/src/modules/memberships/memberships.module.ts),
+which `AuthModule` imports **and re-exports**. (`forFeature()` returns a new
+dynamic module object per call and Nest keys modules by identity, so that one
+call is hoisted into a constant and reused by `imports` and `exports`.)
 
 Tenancy is proven at the write, not assumed from the token. Inside the same
 transaction that writes the row, `TasksService.createTask` requires the
@@ -237,6 +250,15 @@ assignee to hold a membership *in that org*. Both refuse with exactly the error
 a nonexistent id gets (`Project 42 not found` /
 `User 42 is not a member of this organization`) — a distinct "belongs to
 someone else" message would turn the API into a cross-tenant existence oracle.
+Membership itself is only ever granted to a **new** account:
+`OrganizationOnboardingService` refuses an invite whose email already has one,
+so an admin cannot attach a stranger — or another tenant's admin — to their
+organization without consent, and cannot manufacture an assignee that way. The
+refusal reads the same for an address that is already a member here and for one
+that belongs to another tenant; erasing the last signal (that an account exists
+at all) needs a pending-invitation row the invitee accepts, which is the shape a
+production app should reach for.
+
 See [`test/integration/tenant-authz.spec.ts`](https://github.com/nest-native/reference-app/blob/main/test/integration/tenant-authz.spec.ts)
 and [`test/e2e/roles-authz.spec.ts`](https://github.com/nest-native/reference-app/blob/main/test/e2e/roles-authz.spec.ts).
 
@@ -388,7 +410,7 @@ same image (see `docker-compose.yml`).
 | `modules/organizations/` | Repo + service + tRPC router. `organizations.current` / `.list` |
 | `modules/users/` | Repo + service + tRPC router. `users.me` / `.list` / `.invite` |
 | `modules/projects/` | Repo + service + tRPC router. `projects.list` / `.get` / `.create` |
-| `modules/memberships/` | Repo only (consumed by onboarding, `RolesGuard`, and the task tenancy checks) |
+| `modules/memberships/` | Repo + the one `forFeature` registration of it, re-exported through `AuthModule` (consumed by onboarding, `RolesGuard`, and the task tenancy checks) |
 | `modules/audit-log/` | `AuditLogService.record()` |
 | `modules/outbox/` | Producer, claimer, registry, fake transport, `user.invited` handler, `outbox.constants.ts` |
 | `modules/onboarding/` | `OrganizationOnboardingService` — the `@Transactional` workflow |
@@ -410,8 +432,9 @@ same image (see `docker-compose.yml`).
 | `test/e2e/auth-flow.spec.ts` | Login flow over real HTTP; 401 on wrong password / no token / bad token |
 | `test/e2e/trpc-ping.smoke.spec.ts` | `GET /trpc/ping` returns 'pong'; `/health` returns ok |
 | `test/e2e/core-modules.spec.ts` | Authenticated flow over real HTTP across the three core routers |
-| `test/integration/tenant-authz.spec.ts` | Cross-org project/assignee are refused like missing ones, nothing committed; login picks the oldest membership |
-| `test/e2e/roles-authz.spec.ts` | RBAC over real HTTP: viewer/member/admin limits, and a revoked membership blocking the next mutation |
+| `test/integration/tenant-authz.spec.ts` | Cross-org project/assignee are refused like missing ones, nothing committed; an invite cannot attach an existing account; login picks the oldest membership |
+| `test/e2e/roles-authz.spec.ts` | RBAC over real HTTP: viewer/member/admin limits, and a revoked membership blocking the next request — reads and the AI assistant included |
+| `test/integration/auth-context.spec.ts` | The guards' caller extractor: tRPC reads the procedure context, never the caller's input |
 
 Plus `client-smoke/client.ts` (typed client over real HTTP using the
 generated `AppRouter`) which is run via `npm run client-smoke` rather than
