@@ -16,6 +16,8 @@ import {
   CURRENT_USER,
 } from '../../context/request-context.module';
 import type { Task } from '../../database/schema';
+import { MembershipsRepository } from '../memberships/memberships.repository';
+import { ProjectsRepository } from '../projects/projects.repository';
 import {
   OUTBOX_TOPIC_TASK_ASSIGNED,
   OUTBOX_TOPIC_TASK_COMPLETED,
@@ -40,6 +42,9 @@ export interface AssignTaskArgs {
 export class TasksService {
   constructor(
     @Inject(TasksRepository) private readonly repo: TasksRepository,
+    @Inject(ProjectsRepository) private readonly projects: ProjectsRepository,
+    @Inject(MembershipsRepository)
+    private readonly memberships: MembershipsRepository,
     @Inject(CURRENT_USER)
     private readonly currentUser: CurrentUserContext | null,
     @Inject(CURRENT_ORGANIZATION)
@@ -60,6 +65,13 @@ export class TasksService {
   createTask(input: CreateTaskArgs): Promise<Task> {
     const org = this.requireOrg();
     const user = this.requireUser();
+    // `projectId` is caller input and the tasks table carries its own org id, so
+    // without this the task would attach to a project of ANOTHER tenant. The
+    // error is identical whether the project belongs to someone else or does not
+    // exist at all — a distinct message would be a cross-tenant existence oracle.
+    if (!this.projects.findByIdInOrg(input.projectId, org.id)) {
+      throw new NotFoundException(`Project ${input.projectId} not found`);
+    }
     const task = this.repo.create({
       orgId: org.id,
       projectId: input.projectId,
@@ -87,6 +99,14 @@ export class TasksService {
   assignTask(input: AssignTaskArgs): Promise<Task> {
     const org = this.requireOrg();
     const user = this.requireUser();
+    // The task is org-scoped by the repository, but the assignee is not: only a
+    // member of THIS org may hold work here. Same-message rule as createTask —
+    // "no such user" and "member of another org" are indistinguishable.
+    if (!this.memberships.findByOrgAndUser(org.id, input.assigneeId)) {
+      throw new NotFoundException(
+        `User ${input.assigneeId} is not a member of this organization`,
+      );
+    }
     const task = this.repo.assign(org.id, input.id, input.assigneeId);
     if (!task) throw new NotFoundException(`Task ${input.id} not found`);
 

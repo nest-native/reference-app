@@ -2,6 +2,8 @@ import { Inject, UseGuards } from '@nestjs/common';
 import { Input, Mutation, Query, Router } from '@nest-native/trpc';
 import { z } from 'zod';
 import { AuthGuard } from '../../auth/auth.guard';
+import { Roles } from '../../auth/roles.decorator';
+import { RolesGuard } from '../../auth/roles.guard';
 import { TasksService } from './tasks.service';
 
 const TaskSchema = z.object({
@@ -33,8 +35,11 @@ const ListTasksInputSchema = z.object({
   projectId: z.number().int().positive(),
 });
 
+// Guards compose left to right: AuthGuard proves the caller, RolesGuard proves
+// they still hold a membership in the active org — and, for the procedures that
+// declare @Roles, that their live role allows the write.
 @Router('tasks')
-@UseGuards(AuthGuard)
+@UseGuards(AuthGuard, RolesGuard)
 export class TasksRouter {
   constructor(@Inject(TasksService) private readonly service: TasksService) {}
 
@@ -43,16 +48,19 @@ export class TasksRouter {
     return this.service.listTasks(projectId);
   }
 
+  @Roles('admin', 'member')
   @Mutation({ input: CreateTaskInputSchema, output: TaskSchema })
   create(@Input() input: z.infer<typeof CreateTaskInputSchema>) {
     return this.service.createTask(input);
   }
 
+  @Roles('admin', 'member')
   @Mutation({ input: AssignTaskInputSchema, output: TaskSchema })
   assign(@Input() input: z.infer<typeof AssignTaskInputSchema>) {
     return this.service.assignTask(input);
   }
 
+  @Roles('admin', 'member')
   @Mutation({ input: CompleteTaskInputSchema, output: TaskSchema })
   complete(@Input('id') id: number) {
     return this.service.completeTask(id);

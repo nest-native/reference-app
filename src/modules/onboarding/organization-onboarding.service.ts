@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { ConflictException, Inject, Injectable } from '@nestjs/common';
 import { InjectTransaction, Transactional } from '@nestjs-cls/transactional';
 import { eq } from 'drizzle-orm';
 import { OutboxProducer } from '@nest-native/messaging';
@@ -58,7 +58,7 @@ export class OrganizationOnboardingService {
   // signature the decorator imposes on the caller's view of the method.
   @Transactional()
   inviteUser(input: InviteUserInput): Promise<InviteUserResult> {
-    const user = this.upsertUser(input.email, input.initialPassword);
+    const user = this.createInvitee(input.email, input.initialPassword);
     const membership = this.memberships.create({
       orgId: input.orgId,
       userId: user.id,
@@ -99,13 +99,31 @@ export class OrganizationOnboardingService {
     return { user, membership, project, outboxEventId: event.id } as unknown as Promise<InviteUserResult>;
   }
 
-  private upsertUser(email: string, initialPassword: string): User {
+  /**
+   * An invite always creates a NEW account. It deliberately does not attach an
+   * existing one: joining an organization is the account owner's decision, and
+   * an admin who could attach any address would be able to pull another
+   * tenant's user into this org with a role of their choosing — after which
+   * that account satisfies every "is a member of this org" predicate, including
+   * the assignee check in `TasksService.assignTask`.
+   *
+   * The "already a member here" and the "belongs to another tenant" cases raise
+   * the SAME error, so the refusal never reveals which tenants an address
+   * belongs to. It does still reveal that the address HAS an account; removing
+   * that last signal needs a pending-invitation row the invitee accepts, which
+   * is the shape a production app should reach for.
+   */
+  private createInvitee(email: string, initialPassword: string): User {
     const existing = this.db
       .select()
       .from(users)
       .where(eq(users.email, email))
       .get();
-    if (existing) return existing;
+    if (existing) {
+      throw new ConflictException(
+        'An account already exists for this email; it can only join an organization from its own side',
+      );
+    }
     return this.db
       .insert(users)
       .values({

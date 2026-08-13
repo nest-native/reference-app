@@ -11,6 +11,7 @@ import { loadEnv } from '../../src/config/env';
 const KEYS = [
   'OUTBOX_POLL_MS',
   'TASK_REMINDER_DELAY_MS',
+  'AUTH_TTL_SECONDS',
   'PORT',
   'AUTH_SECRET',
   'NODE_ENV',
@@ -67,6 +68,23 @@ describe('loadEnv parsing', () => {
     assert.throws(() => loadEnv(), /Invalid TASK_REMINDER_DELAY_MS/);
     process.env.TASK_REMINDER_DELAY_MS = 'abc';
     assert.throws(() => loadEnv(), /Invalid TASK_REMINDER_DELAY_MS/);
+  });
+
+  test('AUTH_TTL_SECONDS: defaults to an hour, parses a valid TTL, rejects NaN, zero and negatives', () => {
+    delete process.env.AUTH_TTL_SECONDS;
+    assert.equal(loadEnv().authTtlSeconds, 3_600);
+
+    process.env.AUTH_TTL_SECONDS = '900';
+    assert.equal(loadEnv().authTtlSeconds, 900);
+
+    // A raw parseInt used to let these through: NaN silently produced tokens
+    // with `exp: NaN` (never valid), and 0/negative ones expire on arrival.
+    process.env.AUTH_TTL_SECONDS = 'one-hour';
+    assert.throws(() => loadEnv(), /Invalid AUTH_TTL_SECONDS/);
+    process.env.AUTH_TTL_SECONDS = '0';
+    assert.throws(() => loadEnv(), /Invalid AUTH_TTL_SECONDS/);
+    process.env.AUTH_TTL_SECONDS = '-60';
+    assert.throws(() => loadEnv(), /Invalid AUTH_TTL_SECONDS/);
   });
 
   test('readPort: defaults to 3000, parses a valid port, rejects NaN and out-of-range', () => {
