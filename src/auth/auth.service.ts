@@ -5,7 +5,7 @@ import {
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
-import { eq } from 'drizzle-orm';
+import { asc, eq } from 'drizzle-orm';
 import { InjectDrizzle } from '@nest-native/drizzle';
 import { LockoutService } from '@nest-native/lockout';
 import type { AppDatabase } from '../database/database';
@@ -72,10 +72,14 @@ export class AuthService {
     }
     await this.lockout.reportSuccess(identity);
 
+    // The active organization is deterministic: the OLDEST membership wins
+    // (createdAt is ISO text, so it sorts lexicographically; id breaks ties).
     const membership = this.db
       .select()
       .from(memberships)
       .where(eq(memberships.userId, user.id))
+      .orderBy(asc(memberships.createdAt), asc(memberships.id))
+      .limit(1)
       .get();
     const orgId = membership?.orgId ?? null;
 
