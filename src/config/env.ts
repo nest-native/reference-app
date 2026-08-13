@@ -132,7 +132,9 @@ export function loadEnv(): AppEnv {
     databaseUrl: readDatabaseUrl(),
     trpcPath: process.env.TRPC_PATH ?? '/trpc',
     authSecret: readAuthSecret(nodeEnv),
-    authTtlSeconds: Number.parseInt(process.env.AUTH_TTL_SECONDS ?? '3600', 10),
+    // Fail fast: a NaN TTL would sign tokens with `exp: NaN` (never valid) and
+    // a zero/negative one would mint tokens that are already expired.
+    authTtlSeconds: readIntFromEnv('AUTH_TTL_SECONDS', 3600),
     lockoutLimit: readIntFromEnv('LOCKOUT_LIMIT', 5),
     lockoutCooloffMs: readIntFromEnv('LOCKOUT_COOLOFF_MS', 15 * 60_000),
     cacheTtlMs: readIntFromEnv('CACHE_TTL_MS', 30_000),
