@@ -3,6 +3,7 @@ import { Input, Query, Router } from '@nest-native/trpc';
 import { CacheService } from '@nest-native/cache';
 import { z } from 'zod';
 import { AuthGuard } from '../../auth/auth.guard';
+import { RolesGuard } from '../../auth/roles.guard';
 import type { CurrentOrganizationContext } from '../../auth/auth-context';
 import { CURRENT_ORGANIZATION } from '../../context/request-context.module';
 import { ActivityService } from './activity.service';
@@ -32,7 +33,7 @@ const ListActivityInputSchema = z.object({
  * inject the request-scoped CURRENT_ORGANIZATION.
  */
 @Router('activity')
-@UseGuards(AuthGuard)
+@UseGuards(AuthGuard, RolesGuard)
 export class ActivityRouter {
   constructor(
     @Inject(ActivityService) private readonly service: ActivityService,

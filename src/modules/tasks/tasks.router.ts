@@ -35,9 +35,9 @@ const ListTasksInputSchema = z.object({
   projectId: z.number().int().positive(),
 });
 
-// Guards compose left to right: AuthGuard proves the caller, RolesGuard reads
-// their live membership role for the procedures that declare @Roles. Reads
-// declare none, so they stay token-trusted.
+// Guards compose left to right: AuthGuard proves the caller, RolesGuard proves
+// they still hold a membership in the active org — and, for the procedures that
+// declare @Roles, that their live role allows the write.
 @Router('tasks')
 @UseGuards(AuthGuard, RolesGuard)
 export class TasksRouter {

@@ -63,6 +63,13 @@ async function login(email: string, password: string): Promise<string> {
   return superjson.deserialize<{ token: string }>(parsed.result.data).token;
 }
 
+/** superjson-encoded query input, the way the typed client sends it. */
+function activityInput(id: number): string {
+  return encodeURIComponent(
+    JSON.stringify(superjson.serialize({ projectId: id })),
+  );
+}
+
 async function readStatus(path: string, token: string): Promise<number> {
   const r = await fetch(`${baseUrl}${trpcPath}/${path}`, {
     headers: { authorization: `Bearer ${token}` },
@@ -182,9 +189,9 @@ test('an admin may invite, including minting another admin', async () => {
   assert.equal(result.membership.role, 'admin');
 });
 
-test('revoking a membership blocks the next mutation on the already-issued token', async () => {
+test('revoking a membership blocks the next request on the already-issued token', async () => {
   // The JWT still says "org N" — RolesGuard re-reads the membership, so the
-  // revocation lands on the next mutation instead of at token expiry.
+  // revocation lands on the next request instead of at token expiry.
   inspect
     .delete(memberships)
     .where(
@@ -196,6 +203,24 @@ test('revoking a membership blocks the next mutation on the already-issued token
     await denied('tasks.create', { projectId, title: 'After revocation' }, memberToken),
     403,
   );
-  // Reads stay token-trusted until the token expires — the documented model.
-  assert.equal(await readStatus('projects.list', memberToken), 200);
+  // Reads go too: the roster, the projects, the feed and the AI digest are
+  // exactly what an offboarded account must stop seeing first.
+  assert.equal(await readStatus('projects.list', memberToken), 403);
+  assert.equal(await readStatus('users.list', memberToken), 403);
+  assert.equal(
+    await readStatus(`activity.list?input=${activityInput(projectId)}`, memberToken),
+    403,
+  );
+  const assistant = await fetch(`${baseUrl}/projects/${projectId}/assistant`, {
+    method: 'POST',
+    headers: { authorization: `Bearer ${memberToken}` },
+  });
+  assert.equal(assistant.status, 403);
+
+  // Login still works — it is the token that is stale, not the account.
+  const relogin = await post('auth.login', {
+    email: 'member@acme.test',
+    password: 'member-pass-1',
+  });
+  assert.equal(relogin.status, 200);
 });
