@@ -150,6 +150,8 @@ service deps through `@Inject(...)` in the constructor and call them.
   │   - or -             │
   │ tRPC handler         │   ←── nest-trpc-native dispatch
   │   AuthGuard          │       reads ctx.authContext via getArgs()[1]
+  │   RolesGuard         │       re-reads the caller's membership role
+  │                      │       (mutations only — see Authorization)
   │   ParamDecorators    │       @Input, @TrpcContext, @CurrentUser
   │   Procedure body     │
   └──────────────────────┘
@@ -176,10 +178,14 @@ serves both transports.
 ## Authentication
 
 `AuthService.login(email, password)` runs `scrypt`-verify against the stored
-hash, finds the first membership row for the user, and mints a real
-HS256-signed JWT containing `{ sub: userId, org: orgId, iat, exp }`. The
-signing key comes from `AUTH_SECRET` (min 32 chars, required in production,
-deterministic dev fallback elsewhere).
+hash, picks the user's **oldest** membership (ordered by `created_at`, then
+`id` as the tiebreak — so repeated logins always land on the same tenant), and
+mints a real HS256-signed JWT containing
+`{ sub: userId, org: orgId, iat, exp }`. The signing key comes from
+`AUTH_SECRET` (min 32 chars, required in production, deterministic dev fallback
+elsewhere) and the lifetime from `AUTH_TTL_SECONDS` (default 3600; a NaN, zero
+or negative value fails `loadEnv()` at boot instead of minting tokens that can
+never verify).
 
 JWT verification uses Node's built-in `node:crypto` HMAC — there's no JWT
 library dependency. See
@@ -190,6 +196,49 @@ covers roundtrip, tamper, expiry, wrong-secret, malformed, and unsupported-algor
 Password hashing is `scrypt` with a 16-byte random salt; format is
 `scrypt$<salt-hex>$<hash-hex>`. The same helpers are reused by
 [`scripts/seed.ts`](https://github.com/nest-native/reference-app/blob/main/scripts/seed.ts) so seeded users can log in.
+It is deliberately the **synchronous** `scryptSync` — a short, obviously-correct
+helper reads better here — but that blocks the event loop for the duration of
+every hash, so concurrent logins queue behind each other. A production adopter
+should swap in an async hash or a worker pool; that is orthogonal to (not a
+replacement for) the login lockout below, which limits how many attempts reach
+the hash at all.
+
+## Authorization (roles + tenancy)
+
+The token says **who** is calling and **which** organization is active. It
+deliberately says nothing about what the caller may do — that is re-read from
+the database on every mutation:
+
+```
+@Router('tasks')
+@UseGuards(AuthGuard, RolesGuard)   ← composed left to right
+export class TasksRouter {
+  @Query(...)  list(...)            ← no @Roles: token-trusted read
+  @Roles('admin', 'member')
+  @Mutation(...) create(...)        ← RolesGuard re-reads the membership row
+}
+```
+
+[`RolesGuard`](https://github.com/nest-native/reference-app/blob/main/src/auth/roles.guard.ts)
+resolves `MembershipsRepository.findByOrgAndUser(activeOrg, caller)` at request
+time and throws `ForbiddenException` when the membership is missing (revoked)
+or its role is not in the procedure's `@Roles(...)` list. The policy is
+deliberately small — three roles, no policy engine, no per-resource ACLs:
+`users.invite` is `admin` only; `tasks.create` / `.assign` / `.complete` and
+`projects.create` accept `admin` or `member`; `viewer` reads only. Reads carry
+no `@Roles` and stay token-trusted until the TTL lapses, so a revoked member
+loses **mutations** on their next request and **reads** when their token
+expires.
+
+Tenancy is proven at the write, not assumed from the token. Inside the same
+transaction that writes the row, `TasksService.createTask` requires the
+`projectId` to resolve *within the caller's org* and `assignTask` requires the
+assignee to hold a membership *in that org*. Both refuse with exactly the error
+a nonexistent id gets (`Project 42 not found` /
+`User 42 is not a member of this organization`) — a distinct "belongs to
+someone else" message would turn the API into a cross-tenant existence oracle.
+See [`test/integration/tenant-authz.spec.ts`](https://github.com/nest-native/reference-app/blob/main/test/integration/tenant-authz.spec.ts)
+and [`test/e2e/roles-authz.spec.ts`](https://github.com/nest-native/reference-app/blob/main/test/e2e/roles-authz.spec.ts).
 
 ## Login lockout
 
@@ -333,13 +382,13 @@ same image (see `docker-compose.yml`).
 | `app.module.ts` | Root module: imports + ClsPluginTransactional wiring |
 | `config/env.ts` | `loadEnv()` — single source of truth for env vars |
 | `database/` | `DatabaseModule` (DrizzleModule.forRoot wiring), schema, migrations |
-| `auth/` | JWT helpers, scrypt password helpers, `AuthService`, middleware, `AuthGuard`, `@CurrentUser`/`@CurrentOrganization` decorators, `AuthRouter` |
+| `auth/` | JWT helpers, scrypt password helpers, `AuthService`, middleware, `AuthGuard` + `RolesGuard`/`@Roles`, `@CurrentUser`/`@CurrentOrganization` decorators, `AuthRouter` |
 | `context/` | `RequestContextModule` — Nest request-scoped `CURRENT_USER` / `CURRENT_ORGANIZATION` providers backed by `req.authContext` |
 | `health/` | `/health` REST controller |
 | `modules/organizations/` | Repo + service + tRPC router. `organizations.current` / `.list` |
 | `modules/users/` | Repo + service + tRPC router. `users.me` / `.list` / `.invite` |
 | `modules/projects/` | Repo + service + tRPC router. `projects.list` / `.get` / `.create` |
-| `modules/memberships/` | Repo only (consumed by onboarding) |
+| `modules/memberships/` | Repo only (consumed by onboarding, `RolesGuard`, and the task tenancy checks) |
 | `modules/audit-log/` | `AuditLogService.record()` |
 | `modules/outbox/` | Producer, claimer, registry, fake transport, `user.invited` handler, `outbox.constants.ts` |
 | `modules/onboarding/` | `OrganizationOnboardingService` — the `@Transactional` workflow |
@@ -361,6 +410,8 @@ same image (see `docker-compose.yml`).
 | `test/e2e/auth-flow.spec.ts` | Login flow over real HTTP; 401 on wrong password / no token / bad token |
 | `test/e2e/trpc-ping.smoke.spec.ts` | `GET /trpc/ping` returns 'pong'; `/health` returns ok |
 | `test/e2e/core-modules.spec.ts` | Authenticated flow over real HTTP across the three core routers |
+| `test/integration/tenant-authz.spec.ts` | Cross-org project/assignee are refused like missing ones, nothing committed; login picks the oldest membership |
+| `test/e2e/roles-authz.spec.ts` | RBAC over real HTTP: viewer/member/admin limits, and a revoked membership blocking the next mutation |
 
 Plus `client-smoke/client.ts` (typed client over real HTTP using the
 generated `AppRouter`) which is run via `npm run client-smoke` rather than
