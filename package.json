@@ -2,7 +2,7 @@
   "name": "nest-native-reference-app",
   "version": "0.0.1",
   "private": true,
-  "description": "Production-shaped multi-tenant work-tracking SaaS showcasing all six @nest-native libraries (drizzle, trpc, kafka, messaging, asyncapi, ai-sdk)",
+  "description": "Production-shaped multi-tenant work-tracking SaaS showcasing all nine @nest-native libraries (drizzle, trpc, kafka, messaging, jobs, asyncapi, ai-sdk, cache, lockout)",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/nest-native/reference-app.git"
@@ -19,6 +19,7 @@
     "lint:fix": "eslint . --fix",
     "complexity:check": "eslint --config eslint.complexity-check.config.mjs \"src/**/*.ts\"",
     "complexity:report": "eslint --config eslint.complexity.config.mjs \"src/**/*.ts\"",
+    "docs:check": "node scripts/check-compat-table.mjs",
     "test": "node --import tsx --test test/integration/*.spec.ts test/e2e/*.spec.ts",
     "test:cov": "c8 node --import tsx --test test/integration/*.spec.ts test/e2e/*.spec.ts",
     "security:audit": "npm audit --audit-level=high",
@@ -32,7 +33,7 @@
     "client-smoke:typecheck": "tsc --noEmit -p client-smoke/tsconfig.json",
     "start": "node dist/main.js",
     "start:dev": "tsx watch src/main.ts",
-    "ci": "npm run typecheck && npm run client-smoke:typecheck && npm run lint && npm run complexity:check && npm run test:cov && npm run security:audit && npm run build",
+    "ci": "npm run typecheck && npm run client-smoke:typecheck && npm run lint && npm run complexity:check && npm run docs:check && npm run test:cov && npm run security:audit && npm run build",
     "infra:up": "AUTH_SECRET=${AUTH_SECRET:-infra-only-placeholder} docker compose --profile kafka up -d --wait redpanda",
     "infra:down": "AUTH_SECRET=${AUTH_SECRET:-infra-only-placeholder} docker compose --profile kafka down -v redpanda",
     "test:kafka": "KAFKA_BROKERS=localhost:19092 KAFKA_TOPIC_PREFIX=reliable-e2e. node --import tsx --test test/integration/reliable-messaging.kafka.spec.ts",

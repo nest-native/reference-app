@@ -117,7 +117,8 @@ docs/architecture.md       one-sitting tour
 ```bash
 npm run test          # node --test: integration + e2e (real SQLite, offline)
 npm run test:cov      # with c8 coverage
-npm run ci            # typecheck, lint, complexity (≤15), test:cov, security:audit, build
+npm run docs:check    # README table/badge, package.json description, docs/ roster vs the real deps
+npm run ci            # typecheck, lint, complexity (≤15), docs:check, test:cov, security:audit, build
 ```
 
 Coverage here is **pragmatic, not 100%** — the 100% bar belongs to the libraries. The transactional workflow, the outbox worker, the inbox dedup, the reminder job's exactly-once scheduling and execution, the AsyncAPI catalog, the AI stream, and the login-lockout gate (fail N times → 429, even the right password is refused while locked), and cache coherence (mutations refresh cached reads long before TTL — tag invalidation, not expiry) all have explicit tests. CI runs on **Node 22**.
@@ -139,15 +140,27 @@ ritual, and agent instructions — in
 
 ## Compatibility
 
+One row per library, in chapter order:
+
 | | Supported line |
 | --- | --- |
 | Node.js | `>=22` |
 | NestJS | `11.x` |
-| `@nest-native/drizzle` | `0.3.x` · `@nest-native/trpc` `0.6.x` · `@nest-native/kafka` `0.2.x` |
-| `@nest-native/messaging` | `0.2.x` · `@nest-native/asyncapi` `0.1.x` · `@nest-native/ai-sdk` `0.4.x` (on `ai@7`) |
-| `@nest-native/lockout` | `0.3.x` (on `@authlock/core` `0.3.x`) |
+| `@nest-native/drizzle` | `0.4.x` |
+| `@nest-native/trpc` | `0.6.x` |
+| `@nest-native/messaging` | `0.5.x` |
+| `@nest-native/kafka` | `0.3.x` |
+| `@nest-native/jobs` | `0.2.x` |
+| `@nest-native/asyncapi` | `0.2.x` |
+| `@nest-native/ai-sdk` | `0.5.x` (on `ai@7`) |
 | `@nest-native/cache` | `0.1.x` (on `@stalefree/core` `0.1.x`) |
-| Drizzle ORM | `0.45.x` · `@nestjs-cls/transactional` `^3` |
+| `@nest-native/lockout` | `0.4.x` (on `@authlock/core` `0.4.x`) |
+| `drizzle-orm` | `0.45.x` (with `@nestjs-cls/transactional` `^3` and the official Drizzle adapter) |
+
+Every version in that table is checked against `package.json` by
+`npm run docs:check` (also in CI), which fails if a version drifts, if a
+library is added without getting a row, or if the badge, the description, or
+the docs site still counts the old roster.
 
 ## Philosophy
 
