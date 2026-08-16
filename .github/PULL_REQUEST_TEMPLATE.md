@@ -12,10 +12,15 @@
 ## Modules Touched
 
 - [ ] `organizations` / `users` / `memberships`
-- [ ] `projects`
+- [ ] `projects` / `tasks`
+- [ ] `activity` (feed read-model, projections)
 - [ ] `audit-log`
-- [ ] `outbox` (module or worker)
-- [ ] `auth` / `context`
+- [ ] `outbox` / `inbox` (messaging, module or worker)
+- [ ] Kafka profile (consumers, transport)
+- [ ] `reminders` (deferred + scheduled jobs)
+- [ ] `events-catalog` (asyncapi) / `assistant` (ai-sdk)
+- [ ] `cache` (read caching, tag invalidation)
+- [ ] `auth` / `context` / lockout
 - [ ] `trpc` (routers, generated schema)
 - [ ] `database` (schema, migrations, wiring)
 - [ ] Tooling / CI / docs only
@@ -23,12 +28,17 @@
 ## Public Surface (libraries)
 
 - [ ] No use of library internals introduced
-- [ ] Only primary onboarding APIs of `nest-trpc-native` used
+- [ ] Only primary onboarding APIs of `@nest-native/trpc` used
       (`TrpcModule`, `@Router`, `@Query`, `@Mutation`, `@Subscription`,
       `@Input`, `@TrpcContext`, generated `AppRouter`)
-- [ ] Only primary onboarding APIs of `nest-drizzle-native` used
+- [ ] Only primary onboarding APIs of `@nest-native/drizzle` used
       (`DrizzleModule.{forRoot,forRootAsync,forFeature}`, `@InjectDrizzle`,
       `@DrizzleRepository`, `@Transactional`, `@InjectTransaction`)
+- [ ] Only primary onboarding APIs (`*.forRoot()` / `forRootAsync()` and the
+      public decorators) of the other libraries used — messaging, kafka, jobs,
+      asyncapi, ai-sdk, cache, lockout
+- [ ] Roster unchanged, or the roster checklist was followed (README,
+      `package.json` description, `docs/`, repo About — `npm run docs:check`)
 
 ## Security Review
 
