@@ -7,17 +7,19 @@ secrets, private URLs, or production data in public issues.
 
 The current supported runtime targets are:
 
-- Node.js `>=20`
+- Node.js `>=22`
 - NestJS `11.x`
 - tRPC `11.x`
 - Drizzle ORM `0.45.x`
-- `nest-drizzle-native` `0.2.x`
-- `nest-trpc-native` `0.4.x`
+
+The supported line for each of the nine `@nest-native/*` libraries lives in
+the README's [Compatibility](README.md#compatibility) table — kept in one
+place, and checked against `package.json` in CI by `npm run docs:check`.
 
 This repo is a reference application, not a published library. Security
 fixes target the running app and its module-level patterns. If a finding is
-in `nest-drizzle-native` or `nest-trpc-native`, please report it on the
-relevant library repository instead.
+in one of the `@nest-native/*` libraries, please report it on that library's
+own repository instead.
 
 ## Reporting a Vulnerability
 
