@@ -6,7 +6,7 @@
     <title>nest-native reference app</title>
     <meta
       name="description"
-      content="Production-shaped reference application for the nest-native stack — nest-drizzle-native and nest-trpc-native composing under realistic backend pressure."
+      content="Production-shaped reference application for the nest-native stack — all nine nest-native libraries composing under realistic backend pressure."
     >
     <meta property="og:title" content="nest-native reference app">
     <meta
@@ -27,7 +27,7 @@
       </a>
       <nav class="nav-links" aria-label="Sections">
         <a href="#what">What it is</a>
-        <a href="#milestones">Milestones</a>
+        <a href="#libraries">Libraries</a>
         <a href="#links">Links</a>
         <a href="https://github.com/nest-native">Org</a>
       </nav>
@@ -39,14 +39,15 @@
           <p class="eyebrow">Reference application</p>
           <h1>The nest-native stack, end to end.</h1>
           <p class="hero-lede">
-            A production-shaped reference application that demonstrates how
-            <a href="https://nest-native.dev/nest-drizzle-native/">nest-drizzle-native</a>
-            and
-            <a href="https://nest-native.dev/nest-trpc-native/">nest-trpc-native</a>
-            compose under realistic backend pressure: feature modules,
-            multi-tenant auth context, cross-service transactions, real-database
-            integration tests, an outbox-pattern worker for post-commit side
-            effects, and a typed tRPC client smoke check.
+            A production-shaped multi-tenant work-tracking SaaS that puts
+            <a href="https://nest-native.dev/">all nine nest-native libraries</a>
+            under realistic backend pressure and composes them the way a real
+            product would: feature modules, multi-tenant auth context,
+            cross-service transactions, reliable domain events over an event
+            backbone, deferred and scheduled jobs, a documented event catalog,
+            a streaming AI assistant, tag-invalidated read caching, login
+            lockout, real-database integration tests, and a typed tRPC client
+            smoke check.
           </p>
           <div class="hero-actions" aria-label="Primary actions">
             <a class="button primary" href="https://github.com/nest-native/reference-app">View on GitHub</a>
@@ -88,7 +89,7 @@
         </div>
         <div class="principles">
           <p>
-            The reference app exists to demonstrate the two libraries this
+            The reference app exists to demonstrate the nine libraries this
             organization publishes — not to become a product of its own. Two
             implicit deliverables:
           </p>
@@ -97,66 +98,74 @@
             <li>A feedback loop on the libraries themselves — if a pattern feels awkward here, that's signal to add API upstream.</li>
           </ul>
           <p>
-            All eight milestones from the implementation brief are complete.
-            Every commit landed via PR with a security and dependency review.
-            <code>npm run ci</code> passes on Node 20 and Node 22.
+            Every library is a chapter of one story — an org invites a
+            teammate, the team works tasks, the events flow, a reminder fires,
+            the contracts are published, the AI reads the feed. Every commit
+            lands via PR with a security and dependency review, and
+            <code>npm run ci</code> passes on Node 22.
           </p>
         </div>
       </section>
 
-      <section id="milestones" class="section">
+      <section id="libraries" class="section">
         <div class="section-heading">
-          <p class="eyebrow">Status</p>
-          <h2>Eight milestones, eight PRs, one tag.</h2>
+          <p class="eyebrow">The roster</p>
+          <h2>Nine libraries, nine chapters.</h2>
         </div>
         <div class="milestones">
           <div class="milestone">
             <span class="milestone-num">01</span>
-            <span class="milestone-title">Bootstrap</span>
-            <span class="milestone-status">done</span>
-            <span class="milestone-desc">Repo skeleton, governance, CI on Node 20+22, Nest scaffold, Drizzle and tRPC wired.</span>
+            <span class="milestone-title"><a href="https://nest-native.dev/drizzle/">@nest-native/drizzle</a></span>
+            <span class="milestone-status">wired</span>
+            <span class="milestone-desc">Persistence — orgs, users, projects, tasks, activity. Repositories, transactions, multi-tenant scoping.</span>
           </div>
           <div class="milestone">
             <span class="milestone-num">02</span>
-            <span class="milestone-title">Database wired</span>
-            <span class="milestone-status">done</span>
-            <span class="milestone-desc">Drizzle with better-sqlite3, ephemeral local DB, smoke test exercising the connection.</span>
+            <span class="milestone-title"><a href="https://nest-native.dev/trpc/">@nest-native/trpc</a></span>
+            <span class="milestone-status">wired</span>
+            <span class="milestone-desc">The typed API — task CRUD, project queries, the activity feed, typesafe end to end into the client smoke check.</span>
           </div>
           <div class="milestone">
             <span class="milestone-num">03</span>
-            <span class="milestone-title">Schema + seed</span>
-            <span class="milestone-status">done</span>
-            <span class="milestone-desc">Six tables, drizzle-kit migrations, idempotent seed (one org, one admin, one starter project).</span>
+            <span class="milestone-title"><a href="https://nest-native.dev/messaging/">@nest-native/messaging</a></span>
+            <span class="milestone-status">wired</span>
+            <span class="milestone-desc">Reliable domain events — a transactional outbox (emit in-tx) plus an idempotent inbox (dedup on consume).</span>
           </div>
           <div class="milestone">
             <span class="milestone-num">04</span>
-            <span class="milestone-title">Auth + request context</span>
-            <span class="milestone-status">done</span>
-            <span class="milestone-desc">scrypt passwords, real HS256 JWT, AuthGuard, request-scoped CURRENT_USER / CURRENT_ORGANIZATION.</span>
+            <span class="milestone-title"><a href="https://nest-native.dev/kafka/">@nest-native/kafka</a></span>
+            <span class="milestone-status">wired</span>
+            <span class="milestone-desc">The event backbone — set KAFKA_BROKERS and the same domain code relays through KafkaOutboxTransport to a real cluster.</span>
           </div>
           <div class="milestone">
             <span class="milestone-num">05</span>
-            <span class="milestone-title">Core modules</span>
-            <span class="milestone-status">done</span>
-            <span class="milestone-desc">organizations, users, projects — repositories + services + tRPC routers, scoped by current org.</span>
+            <span class="milestone-title"><a href="https://nest-native.dev/jobs/">@nest-native/jobs</a></span>
+            <span class="milestone-status">wired</span>
+            <span class="milestone-desc">Deferred work — an assignment reminder enqueued in the same transaction as its projection, plus a DB-stored cron sweep. No Redis.</span>
           </div>
           <div class="milestone">
             <span class="milestone-num">06</span>
-            <span class="milestone-title">Transactional workflow</span>
-            <span class="milestone-status">done</span>
-            <span class="milestone-desc">inviteUser writes 5 rows in one @Transactional. Happy-path, rollback-safety, worker-crash-recovery tests.</span>
+            <span class="milestone-title"><a href="https://nest-native.dev/asyncapi/">@nest-native/asyncapi</a></span>
+            <span class="milestone-status">wired</span>
+            <span class="milestone-desc">The event catalog — an AsyncAPI 3.0 document at /asyncapi so another team could subscribe to your streams.</span>
           </div>
           <div class="milestone">
             <span class="milestone-num">07</span>
-            <span class="milestone-title">Outbox worker</span>
-            <span class="milestone-status">done</span>
-            <span class="milestone-desc">Long-running OutboxClaimer poller with graceful shutdown over SIGTERM/SIGINT.</span>
+            <span class="milestone-title"><a href="https://nest-native.dev/ai-sdk/">@nest-native/ai-sdk</a></span>
+            <span class="milestone-status">wired</span>
+            <span class="milestone-desc">AI over your data — a streaming assistant that turns a project's recent activity into a status update, token by token.</span>
           </div>
           <div class="milestone">
             <span class="milestone-num">08</span>
-            <span class="milestone-title">Polish</span>
-            <span class="milestone-status">done</span>
-            <span class="milestone-desc">Typed client-smoke (AppRouter), Dockerfile + docker-compose, this site, finalized README.</span>
+            <span class="milestone-title"><a href="https://nest-native.dev/cache/">@nest-native/cache</a></span>
+            <span class="milestone-status">wired</span>
+            <span class="milestone-desc">Read caching without Redis — expensive reads cached with tags; mutations evict by tag and TTL is only the backstop.</span>
+          </div>
+          <div class="milestone">
+            <span class="milestone-num">09</span>
+            <span class="milestone-title"><a href="https://nest-native.dev/lockout/">@nest-native/lockout</a></span>
+            <span class="milestone-status">wired</span>
+            <span class="milestone-desc">Brute-force defense — failed logins lock an identity by email or source IP before the credential is ever checked.</span>
           </div>
         </div>
       </section>
@@ -180,13 +189,10 @@
             <span>CHANGELOG</span><span>release notes ⟶</span>
           </a>
           <a href="https://github.com/nest-native/reference-app/releases/tag/v0.1.0">
-            <span>v0.1.0 release</span><span>all eight milestones ⟶</span>
+            <span>v0.1.0 release</span><span>first tag ⟶</span>
           </a>
-          <a href="https://nest-native.dev/nest-drizzle-native/">
-            <span>nest-drizzle-native docs</span><span>library ⟶</span>
-          </a>
-          <a href="https://nest-native.dev/nest-trpc-native/">
-            <span>nest-trpc-native docs</span><span>library ⟶</span>
+          <a href="https://nest-native.dev/">
+            <span>nest-native.dev</span><span>all nine library docs ⟶</span>
           </a>
         </div>
       </section>
