@@ -91,7 +91,36 @@ app's constitution.
   rows, not a magic scheduler. It is part of the pattern teams copy, so it stays
   legible.
 
-### 6. When In Doubt
+### 6. The Roster Is a Claim (change it in ONE change)
+
+- "All nine libraries" is this app's headline claim, and it is stated in
+  **four** places that drift apart silently. When the roster changes — a
+  library added, dropped, or renamed — all four move **in the same PR**:
+  1. `package.json` `description` — the count word and every
+     `@nest-native/*` name.
+  2. `README.md` — the badge, the "Nine libraries, nine chapters" table, and
+     the **Compatibility** table (one row per library, versions read off
+     `package.json`).
+  3. `docs/` — the Pages site: `index.html`'s lede and roster grid, plus
+     `architecture.md`'s module graph and its wiring list.
+  4. The repo **About** description on GitHub. It is not in the tree, so
+     nothing will remind you: set it by hand or via the API.
+- Version literals in the README Compatibility table, and the counts in the
+  badge and the Status/roster copy, are **CI-blocking, not decoration**.
+  `npm run docs:check` (`scripts/check-compat-table.mjs`, in the `npm run ci`
+  chain and its own CI step) fails when a table version drifts from the
+  declared dependency range, when a library has no row, or when a count or a
+  name goes stale in `package.json`, the README, or the Pages site. Bump a
+  library, run it.
+- Prefer **dynamic or roster-free badges** over hardcoded ones. A
+  `libraries-9/9` badge is a version literal in disguise; keep it checked (it
+  is) or drop it, but never leave it to be updated from memory.
+- Any check of this kind **iterates the declared dependencies** — every
+  `@nest-native/*` key in `package.json` — instead of hardcoding a list of
+  library names. A gate with a hardcoded roster goes stale exactly the way the
+  docs it guards do.
+
+### 7. When In Doubt
 
 - Ask: *"Does this make the libraries' integration clearer to a reader, and does
   it keep each library feeling like itself?"* If not, redesign until it does.

@@ -3,9 +3,6 @@ contact_links:
   - name: Security-sensitive report
     url: https://github.com/nest-native/reference-app/security/advisories/new
     about: Please use private vulnerability reporting when available. If unavailable, read SECURITY.md before opening a public issue.
-  - name: Library issue (nest-drizzle-native)
-    url: https://github.com/nest-native/nest-drizzle-native/issues
-    about: File library bugs against the library repo.
-  - name: Library issue (nest-trpc-native)
-    url: https://github.com/nest-native/nest-trpc-native/issues
-    about: File library bugs against the library repo.
+  - name: Library issue (any nest-native library)
+    url: https://github.com/nest-native
+    about: Bugs in drizzle, trpc, messaging, kafka, jobs, asyncapi, ai-sdk, cache, or lockout belong on that library's own repo.

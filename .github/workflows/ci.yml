@@ -57,6 +57,12 @@ jobs:
       - name: Cognitive complexity gate
         run: npm run complexity:check
 
+      # The README table and badge, the package.json description, and the docs/
+      # Pages site all claim which libraries this app composes and at which
+      # versions. This fails when any of them drifts behind the declared deps.
+      - name: Docs roster gate
+        run: npm run docs:check
+
       - name: Tests with coverage
         run: npm run test:cov
 

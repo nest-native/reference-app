@@ -6,14 +6,22 @@ description: One-sitting tour of the nest-native reference app — module graph,
 
 # Architecture
 
-This is a single-process Nest application (plus one optional sidecar
-worker process). It exists to demonstrate how
-[`nest-drizzle-native`](https://github.com/nest-native/nest-drizzle-native)
-and
-[`nest-trpc-native`](https://github.com/nest-native/nest-trpc-native)
+This is a single-process Nest application (plus one background worker
+process). It exists to demonstrate how all nine
+[nest-native](https://github.com/nest-native) libraries —
+[`drizzle`](https://github.com/nest-native/drizzle),
+[`trpc`](https://github.com/nest-native/trpc),
+[`messaging`](https://github.com/nest-native/messaging),
+[`kafka`](https://github.com/nest-native/kafka),
+[`jobs`](https://github.com/nest-native/jobs),
+[`asyncapi`](https://github.com/nest-native/asyncapi),
+[`ai-sdk`](https://github.com/nest-native/ai-sdk),
+[`cache`](https://github.com/nest-native/cache), and
+[`lockout`](https://github.com/nest-native/lockout) —
 compose under realistic backend pressure: feature modules, multi-tenant
 context, cross-service transactions, post-commit side effects via a
-transactional outbox, and a typed tRPC client.
+transactional outbox, deferred and scheduled work, a published event
+catalog, and a typed tRPC client.
 
 This document is meant to be read top-to-bottom in one focused sitting.
 Each section answers one question.
@@ -85,42 +93,69 @@ concrete rather than designing in a vacuum.
 ## Module graph
 
 ```
-              ┌─────────────────────────────────────────────────┐
-              │ AppModule                                       │
-              │                                                 │
-              │   DatabaseModule   ← DrizzleModule.forRoot      │
-              │   ClsModule (+ ClsPluginTransactional)          │
-              │   AuthModule       (login, guard, middleware)   │
-              │   RequestContextModule  (CURRENT_USER, _ORG)    │
-              │                                                 │
-              │   OrganizationsModule                           │
-              │   UsersModule       ← OnboardingModule          │
-              │   ProjectsModule                                │
-              │                                                 │
-              │   AuditLogModule                                │
-              │   OutboxModule  (producer, claimer, registry,   │
-              │                  transport, user.invited handler)│
-              │   OnboardingModule (OrganizationOnboardingService)│
-              │                                                 │
-              │   AppTrpcModule    ← TrpcModule.forRoot         │
-              │     PingRouter, AuthRouter, OrganizationsRouter,│
-              │     UsersRouter, ProjectsRouter                 │
-              └─────────────────────────────────────────────────┘
+              ┌──────────────────────────────────────────────────┐
+              │ AppModule                                        │
+              │                                                  │
+              │   DatabaseModule   ← DrizzleModule.forRoot       │
+              │   AppCacheModule   ← CacheModule.forRootAsync    │
+              │   ClsModule (+ ClsPluginTransactional)           │
+              │   AuthModule       (login, guard, middleware,    │
+              │                     AppLockoutModule)            │
+              │   RequestContextModule  (CURRENT_USER, _ORG)     │
+              │   AuditLogModule                                 │
+              │                                                  │
+              │   JobsModule.forRoot  +  RemindersModule         │
+              │                                                  │
+              │   ─ messaging profile (KAFKA_BROKERS flips it) ─ │
+              │   MessagingModule.forRootAsync                   │
+              │     default: InProcessOutboxModule               │
+              │     kafka:   KafkaModule.forRootAsync + the      │
+              │              UserInvited / TaskActivity inboxes  │
+              │                                                  │
+              │   OrganizationsModule                            │
+              │   UsersModule       ← OnboardingModule           │
+              │   ProjectsModule    TasksModule                  │
+              │   ActivityModule    (the read-model + projection)│
+              │                                                  │
+              │   AppTrpcModule       ← TrpcModule.forRoot       │
+              │     PingRouter, AuthRouter, OrganizationsRouter, │
+              │     UsersRouter, ProjectsRouter, TasksRouter,    │
+              │     ActivityRouter                               │
+              │   EventsCatalogModule ← AsyncApiModule.forRoot   │
+              │   AssistantModule     ← AiModule.forRoot         │
+              └──────────────────────────────────────────────────┘
 ```
 
-The two libraries are wired exactly once each, via their primary `forRoot`
-APIs:
+Each library is wired **exactly once**, via its primary `forRoot` /
+`forRootAsync` API — the wiring site is the file to read first for that
+chapter:
 
 - [`src/database/database.module.ts`](https://github.com/nest-native/reference-app/blob/main/src/database/database.module.ts) →
   `DrizzleModule.forRoot({ schema, connection, shutdown })`.
 - [`src/trpc/trpc.module.ts`](https://github.com/nest-native/reference-app/blob/main/src/trpc/trpc.module.ts) →
   `TrpcModule.forRoot<AppTrpcContext>({ path, autoSchemaFile,
   createContext })`.
+- [`src/app.module.ts`](https://github.com/nest-native/reference-app/blob/main/src/app.module.ts) →
+  `MessagingModule.forRootAsync({ … })` with the SQLite outbox/inbox stores,
+  and — only when `KAFKA_BROKERS` is set — `KafkaModule.forRootAsync({ … })`
+  plus the Kafka transport and inbox consumers. Same file, both profiles.
+- [`src/app.module.ts`](https://github.com/nest-native/reference-app/blob/main/src/app.module.ts) →
+  `JobsModule.forRoot({ store, scheduleStore })`; the handlers and the
+  bootstrap-declared cron schedule live in
+  [`src/modules/reminders/`](https://github.com/nest-native/reference-app/blob/main/src/modules/reminders).
+- [`src/modules/events-catalog/events-catalog.module.ts`](https://github.com/nest-native/reference-app/blob/main/src/modules/events-catalog/events-catalog.module.ts) →
+  `AsyncApiModule.forRoot({ … })`, served at `/asyncapi` from `main.ts`.
+- [`src/modules/assistant/assistant.module.ts`](https://github.com/nest-native/reference-app/blob/main/src/modules/assistant/assistant.module.ts) →
+  `AiModule.forRoot({ … })` for the streaming project assistant.
+- [`src/cache/cache.setup.ts`](https://github.com/nest-native/reference-app/blob/main/src/cache/cache.setup.ts) →
+  `CacheModule.forRootAsync({ … })` (see [Read caching](#read-caching)).
+- [`src/auth/lockout.setup.ts`](https://github.com/nest-native/reference-app/blob/main/src/auth/lockout.setup.ts) →
+  `LockoutModule.forRootAsync({ … })` (see [Login lockout](#login-lockout)).
 
 Feature modules declare their repositories via
 `DrizzleModule.forFeature([…])` and their routers as providers. Routers are
 ordinary `@Injectable()` classes (the `@Router('alias')` decorator from
-`nest-trpc-native` applies `@Injectable()` automatically) — they accept
+`@nest-native/trpc` applies `@Injectable()` automatically) — they accept
 service deps through `@Inject(...)` in the constructor and call them.
 
 > **DI gotcha:** `tsx`/`esbuild` does not reliably emit
@@ -148,7 +183,7 @@ service deps through `@Inject(...)` in the constructor and call them.
   ┌──────────────────────┐
   │ HTTP controller      │   ←── HealthController (no auth)
   │   - or -             │
-  │ tRPC handler         │   ←── nest-trpc-native dispatch
+  │ tRPC handler         │   ←── @nest-native/trpc dispatch
   │   AuthGuard          │       reads ctx.authContext via getArgs()[1]
   │   ParamDecorators    │       @Input, @TrpcContext, @CurrentUser
   │   Procedure body     │
