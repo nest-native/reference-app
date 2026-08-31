@@ -51,7 +51,7 @@
     "@nest-native/cache": "^0.1.0",
     "@nest-native/drizzle": "^0.4.0",
     "@nest-native/jobs": "^0.2.1",
-    "@nest-native/kafka": "^0.3.0",
+    "@nest-native/kafka": "^0.5.0",
     "@nest-native/lockout": "^0.4.0",
     "@nest-native/messaging": "^0.5.1",
     "@nest-native/trpc": "^0.6.0",

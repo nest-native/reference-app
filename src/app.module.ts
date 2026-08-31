@@ -23,6 +23,8 @@ import { AssistantModule } from './modules/assistant/assistant.module';
 import { AuditLogModule } from './modules/audit-log/audit-log.module';
 import { EventsCatalogModule } from './modules/events-catalog/events-catalog.module';
 import { TaskActivityInboxModule } from './modules/inbox/task-activity-inbox.module';
+import { TASK_SUMMARY_REPLY_TOPIC } from './modules/task-summary/task-summary.contract';
+import { TaskSummaryModule } from './modules/task-summary/task-summary.module';
 import { UserInvitedInboxModule } from './modules/inbox/user-invited-inbox.module';
 import { InProcessOutboxModule } from './modules/outbox/in-process-outbox.module';
 import { OnboardingModule } from './modules/onboarding/onboarding.module';
@@ -72,14 +74,23 @@ function messagingImports(): NonNullable<ModuleMetadata['imports']> {
         // Idempotent producer + acks=all: the outbox already gives us
         // at-least-once; idempotence keeps a producer retry from duplicating a
         // partition write, and acks=all (-1) waits for the full ISR before the
-        // claimer marks the row completed. Keys are kafkajs-style — the config
-        // lands in the Confluent client's `kafkaJS` block, which rejects raw
-        // librdkafka keys like 'enable.idempotence'.
+        // claimer marks the row completed. These are the kafkajs-style keys.
+        // Since @nest-native/kafka 0.4.x raw librdkafka keys work here too —
+        // the library routes dotted names (and the undotted ones the client
+        // declares, like `debug`) to where librdkafka reads them — so the two
+        // families can be mixed in this one object.
         producer: { idempotent: true, acks: -1 },
+        // Opt into request-reply for the one exchange in this app that is a
+        // question rather than an event (see TaskSummaryConsumer). Without this
+        // block no reply consumer is created and the feature costs nothing.
+        requestReply: {
+          replyTopic: `${kafkaEnv.topicPrefix}${TASK_SUMMARY_REPLY_TOPIC}`,
+        },
       }),
     }),
     UserInvitedInboxModule,
     TaskActivityInboxModule,
+    TaskSummaryModule,
     MessagingModule.forRootAsync({
       drizzleInstanceToken,
       outboxStore: new SqliteOutboxStore(),
