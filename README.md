@@ -149,7 +149,7 @@ One row per library, in chapter order:
 | `@nest-native/drizzle` | `0.4.x` |
 | `@nest-native/trpc` | `0.6.x` |
 | `@nest-native/messaging` | `0.5.x` |
-| `@nest-native/kafka` | `0.3.x` |
+| `@nest-native/kafka` | `0.5.x` |
 | `@nest-native/jobs` | `0.2.x` |
 | `@nest-native/asyncapi` | `0.2.x` |
 | `@nest-native/ai-sdk` | `0.5.x` (on `ai@7`) |
