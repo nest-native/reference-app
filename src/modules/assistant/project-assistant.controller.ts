@@ -13,6 +13,7 @@ import {
 } from '@nest-native/ai-sdk';
 import { streamText } from 'ai';
 import { AuthGuard } from '../../auth/auth.guard';
+import { RolesGuard } from '../../auth/roles.guard';
 import { ActivityService } from '../activity/activity.service';
 import { ProjectsService } from '../projects/projects.service';
 import { buildActivityPrompt, buildStatusSummary } from './activity-digest';
@@ -31,6 +32,10 @@ import { resolveAssistantModel } from './assistant-model';
  * never mid-stream error frames. Only once tenant scoping has passed does the
  * response become a stream.
  *
+ * `RolesGuard` runs alongside `AuthGuard` for the same reason: this endpoint
+ * spends model tokens on a tenant's activity feed, so a caller whose membership
+ * was revoked must lose it on their next request, not at token expiry.
+ *
  * `@AiAbortSignal()` is forwarded to `streamText` so a client disconnect
  * mid-stream cancels the upstream model request instead of billing for tokens
  * written to a dead socket.
@@ -44,7 +49,7 @@ export class ProjectAssistantController {
 
   @Post(':projectId/assistant')
   @AiStream()
-  @UseGuards(AuthGuard)
+  @UseGuards(AuthGuard, RolesGuard)
   async summarize(
     @Param('projectId', ParseIntPipe) projectId: number,
     @AiAbortSignal() signal: AbortSignal,

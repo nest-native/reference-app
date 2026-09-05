@@ -37,6 +37,15 @@ async function main(): Promise<void> {
     `worker started (outbox + jobs): db=${env.databaseUrl} poll=${env.outbox.pollIntervalMs}ms batch=${env.outbox.batchSize} stuck=${env.outbox.stuckTimeoutMs}ms`,
   );
 
+  // The worker writes read-model rows (activity feed) the API process caches.
+  // Without the shared bus its tag invalidations never leave this process, so
+  // the API keeps serving stale reads until each entry's TTL lapses.
+  if (!env.cacheSocketPath) {
+    logger.warn(
+      `CACHE_SOCKET_PATH is unset: cross-process cache invalidation is OFF, so API reads can stay stale for up to CACHE_TTL_MS (${env.cacheTtlMs}ms). Set CACHE_SOCKET_PATH to the same socket path in both processes.`,
+    );
+  }
+
   const reportTick = (
     loop: string,
     report: { claimed: number; completed: number; retried: number; failed: number },

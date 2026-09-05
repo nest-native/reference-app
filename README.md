@@ -27,7 +27,7 @@ Follow one journey through the code and every library shows up where a real syst
 | Library | Its job in the story | Where in the code |
 | --- | --- | --- |
 | [`@nest-native/drizzle`](https://github.com/nest-native/drizzle) | **Persistence** — orgs, users, projects, tasks, activity; repositories, transactions, multi-tenant scoping | `src/database/`, every `*.repository.ts` (`@DrizzleRepository`, `@InjectTransaction`) |
-| [`@nest-native/trpc`](https://github.com/nest-native/trpc) | **The typed API** — task CRUD, project queries, the activity feed, all typesafe end-to-end; the superjson transformer keeps the feed's `Date`s real across the wire (the client link is *required* to match, at compile time), and failed validations reach the client as flattened Zod field errors (`error.data.zodError`) | `src/modules/*/**.router.ts` (`@Router`, `@Query`/`@Mutation`), `src/trpc/` (transformer, error formatting, response meta), generated `AppRouter` |
+| [`@nest-native/trpc`](https://github.com/nest-native/trpc) | **The typed API** — task CRUD, project queries, the activity feed, all typesafe end-to-end; the superjson transformer keeps the feed's `Date`s real across the wire (the client link is *required* to match, at compile time), and failed validations reach the client as flattened Zod field errors (`error.data.zodError`); Nest enhancers compose over procedures the usual way — `@UseGuards(AuthGuard, RolesGuard)` plus per-procedure `@Roles(...)` metadata | `src/modules/*/**.router.ts` (`@Router`, `@Query`/`@Mutation`), `src/trpc/` (transformer, error formatting, response meta), generated `AppRouter` |
 | [`@nest-native/messaging`](https://github.com/nest-native/messaging) | **Reliable domain events** — the transactional outbox (emit in-tx) + idempotent inbox (dedup on consume) | `src/modules/{outbox,inbox,activity}/`, `OutboxProducer.enqueue` inside `@Transactional()` |
 | [`@nest-native/kafka`](https://github.com/nest-native/kafka) | **The event backbone** — the outbox relays through `KafkaOutboxTransport`; `@KafkaConsumer`s build read-models | the Kafka profile in `src/app.module.ts`, `src/modules/inbox/*.consumer.ts` |
 | [`@nest-native/jobs`](https://github.com/nest-native/jobs) | **Deferred work** — the assignment reminder: enqueued in the same transaction as the `task.assigned` projection (`uniqueKey` = the event's dedup key), executed exactly once by the worker — **plus recurring work**: a DB-stored cron schedule drives the nightly stale-task sweep | `src/modules/reminders/`, `TaskAssignedProjection` in `src/modules/activity/`, `src/database/schema/jobs.ts` |
@@ -44,6 +44,43 @@ Everything above runs **with no infrastructure** by default:
 
 - **In-process (default)** — the outbox relays through an in-process transport and handlers build the activity feed synchronously. SQLite in a file, no broker. This is what the tests exercise.
 - **Kafka** — set `KAFKA_BROKERS` and the exact same domain code relays through `KafkaOutboxTransport` to a real cluster, with `@KafkaConsumer`s on the other side. The event bodies, dedup keys, and wire headers are identical; only the transport swaps.
+
+## Auth, tenancy, and roles
+
+Login mints an HS256 JWT that **snapshots one active organization** — the
+caller's *oldest* membership (`created_at`, then `id` as the tiebreak, so
+repeated logins always resolve the same tenant). The token carries no role.
+
+- **Every guarded request re-checks the live membership.** `RolesGuard`
+  composes after `AuthGuard` and resolves the caller's membership in the
+  token's organization from the database — **reads included**, so revoking a
+  membership blocks the next request rather than leaving the member roster, the
+  project list, the activity feed and the token-spending AI assistant readable
+  until the token expires.
+- **`@Roles(...)` narrows a procedure further.** `users.invite` is **admin**
+  only; `tasks.create` / `.assign` / `.complete` and `projects.create` accept
+  **admin or member**; a **viewer** reads only. Without `@Roles`, holding any
+  live membership is enough.
+- **The token is a snapshot, never a permission.** It lives for
+  `AUTH_TTL_SECONDS` (default 3600 — an invalid value now fails at boot rather
+  than minting tokens that never verify) and names one organization; every
+  authorization decision is a fresh indexed lookup, deliberately uncached.
+- **Tenancy is proven at the write.** Inside the same transaction,
+  `tasks.create` requires the project to belong to the caller's org and
+  `tasks.assign` requires the assignee to be a member of it. Both refuse with
+  exactly the error a nonexistent id gets, so the API is never a cross-tenant
+  existence oracle.
+- **An invite creates a new account, never attaches an existing one.** Joining
+  an organization is the account owner's call, so an admin cannot pull another
+  tenant's user into their org (and then assign work to it); the refusal is the
+  same whether the address is already a member here or a stranger.
+
+> **Password hashing is synchronous.** `src/auth/password.ts` uses `scryptSync`
+> because a short, obviously-correct helper reads better in a reference app —
+> but it blocks the event loop for every hash, so concurrent logins queue behind
+> each other. Production adopters should move to an async hash or a worker pool;
+> that complements `@nest-native/lockout` (which caps how many attempts reach the
+> hash at all) rather than replacing it.
 
 ## Getting started
 
@@ -93,7 +130,7 @@ src/
   app.module.ts            Root module, ClsPluginTransactional, in-process/Kafka messaging profiles
   config/env.ts            loadEnv() — single source of truth (incl. the optional kafka block)
   database/                DrizzleModule wiring + schema (orgs/users/projects/tasks/activity/...) + migrations
-  auth/                    scrypt passwords, HS256 JWT, AuthGuard, middleware; @nest-native/lockout login lockout (lockout.setup.ts)
+  auth/                    scrypt passwords, HS256 JWT, AuthGuard + RolesGuard/@Roles, middleware; @nest-native/lockout login lockout (lockout.setup.ts)
   cache/                   @nest-native/cache read caching — tag invalidation through @stalefree/core (cache.setup.ts)
   context/                 request-scoped CURRENT_USER / CURRENT_ORGANIZATION
   modules/
@@ -121,7 +158,7 @@ npm run docs:check    # README table/badge, package.json description, docs/ rost
 npm run ci            # typecheck, lint, complexity (≤15), docs:check, test:cov, security:audit, build
 ```
 
-Coverage here is **pragmatic, not 100%** — the 100% bar belongs to the libraries. The transactional workflow, the outbox worker, the inbox dedup, the reminder job's exactly-once scheduling and execution, the AsyncAPI catalog, the AI stream, and the login-lockout gate (fail N times → 429, even the right password is refused while locked), and cache coherence (mutations refresh cached reads long before TTL — tag invalidation, not expiry) all have explicit tests. CI runs on **Node 22**.
+Coverage here is **pragmatic, not 100%** — the 100% bar belongs to the libraries. The transactional workflow, the outbox worker, the inbox dedup, the reminder job's exactly-once scheduling and execution, the AsyncAPI catalog, the AI stream, and the login-lockout gate (fail N times → 429, even the right password is refused while locked), and cache coherence (mutations refresh cached reads long before TTL — tag invalidation, not expiry) all have explicit tests, as do the tenancy and role checks (cross-org project/assignee refused like a missing one with nothing committed; viewer/member/admin limits and revocation over real HTTP). CI runs on **Node 22**.
 
 Two **optional, local-only** layers sit on top (neither runs in CI, and forks
 work without them):

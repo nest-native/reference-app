@@ -2,6 +2,7 @@ import { Inject, UseGuards } from '@nestjs/common';
 import { Query, Router } from '@nest-native/trpc';
 import { z } from 'zod';
 import { AuthGuard } from '../../auth/auth.guard';
+import { RolesGuard } from '../../auth/roles.guard';
 import { OrganizationsService } from './organizations.service';
 
 const OrganizationSchema = z.object({
@@ -12,7 +13,7 @@ const OrganizationSchema = z.object({
 });
 
 @Router('organizations')
-@UseGuards(AuthGuard)
+@UseGuards(AuthGuard, RolesGuard)
 export class OrganizationsRouter {
   constructor(
     @Inject(OrganizationsService)
