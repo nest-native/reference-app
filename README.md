@@ -183,13 +183,13 @@ One row per library, in chapter order:
 | --- | --- |
 | Node.js | `>=22` |
 | NestJS | `11.x` |
-| `@nest-native/drizzle` | `0.4.x` |
-| `@nest-native/trpc` | `0.6.x` |
-| `@nest-native/messaging` | `0.5.x` |
+| `@nest-native/drizzle` | `0.5.x` |
+| `@nest-native/trpc` | `0.7.x` |
+| `@nest-native/messaging` | `0.6.x` |
 | `@nest-native/kafka` | `0.5.x` |
-| `@nest-native/jobs` | `0.2.x` |
-| `@nest-native/asyncapi` | `0.2.x` |
-| `@nest-native/ai-sdk` | `0.5.x` (on `ai@7`) |
+| `@nest-native/jobs` | `0.3.x` |
+| `@nest-native/asyncapi` | `0.3.x` |
+| `@nest-native/ai-sdk` | `0.6.x` (on `ai@7`) |
 | `@nest-native/cache` | `0.1.x` (on `@stalefree/core` `0.1.x`) |
 | `@nest-native/lockout` | `0.4.x` (on `@authlock/core` `0.4.x`) |
 | `drizzle-orm` | `0.45.x` (with `@nestjs-cls/transactional` `^3` and the official Drizzle adapter) |
