@@ -199,6 +199,14 @@ Every version in that table is checked against `package.json` by
 library is added without getting a row, or if the badge, the description, or
 the docs site still counts the old roster.
 
+The NestJS row is the lockfile's 11.x on purpose. Every library above publishes
+`^11 || ^12` and tests both ends of that range in its own CI (an `11 floor`
+leg pinned to the oldest installable 11, and a `12` leg); this app is the one
+place the nine compose, and it tracks the lockfile's 11 until the libraries'
+shared flip trigger fires — NestJS 12 above 50% of `@nestjs/core` weekly
+downloads, or NestJS 11 no longer receiving patches — at which point the
+grouped `@nestjs/*` Dependabot PR is merged here as well.
+
 ## Philosophy
 
 - **Feel native.** Decorator-first, Nest modules + DI + enhancers, lifecycle hooks. No functional wrappers around library decorators.
