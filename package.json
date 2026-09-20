@@ -73,7 +73,7 @@
   },
   "optionalDependencies": {
     "@ai-sdk/openai": "^4.0.41",
-    "@confluentinc/kafka-javascript": "^1.10.0"
+    "@confluentinc/kafka-javascript": "^1.10.1"
   },
   "devDependencies": {
     "@asyncapi/parser": "^3.6.3",
