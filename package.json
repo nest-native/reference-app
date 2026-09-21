@@ -57,11 +57,11 @@
     "@nest-native/trpc": "^0.7.0",
     "@nestjs-cls/transactional": "^3.3.0",
     "@nestjs-cls/transactional-adapter-drizzle-orm": "^1.5.0",
-    "@nestjs/common": "11.2.3",
-    "@nestjs/core": "11.2.3",
-    "@nestjs/platform-express": "11.2.3",
+    "@nestjs/common": "12.0.3",
+    "@nestjs/core": "12.0.3",
+    "@nestjs/platform-express": "12.0.3",
     "@stalefree/core": "^0.1.0",
-    "@trpc/server": "11.18.0",
+    "@trpc/server": "11.19.0",
     "ai": "^7.0.77",
     "better-sqlite3": "13.0.3",
     "drizzle-orm": "0.45.2",
@@ -69,7 +69,7 @@
     "reflect-metadata": "0.2.2",
     "rxjs": "7.8.2",
     "superjson": "^2.2.6",
-    "zod": "4.4.3"
+    "zod": "4.6.5"
   },
   "optionalDependencies": {
     "@ai-sdk/openai": "^4.0.41",
@@ -78,7 +78,7 @@
   "devDependencies": {
     "@asyncapi/parser": "^3.6.3",
     "@stryker-mutator/core": "^10.0.0",
-    "@trpc/client": "^11.18.0",
+    "@trpc/client": "^11.19.0",
     "@types/better-sqlite3": "9.6.0",
     "@types/node": "26.6.1",
     "@typescript-eslint/parser": "8.70.0",
