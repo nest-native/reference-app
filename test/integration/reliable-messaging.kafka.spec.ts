@@ -39,10 +39,50 @@ let seededAdminId: number;
 const TOPIC_PREFIX = process.env.KAFKA_TOPIC_PREFIX ?? '';
 const TOPIC = `${TOPIC_PREFIX}user.invited`;
 
+/**
+ * Creates every topic the Kafka profile subscribes to, before the app boots.
+ *
+ * A consumer that subscribes to a topic that does not exist yet logs "Unknown
+ * topic or partition" and learns about the topic only on a later metadata
+ * refresh — so on a fresh broker, where the claimer's first produce is what
+ * creates `user.invited`, the consumer could miss it for longer than this spec
+ * nudges. It failed about half the runs against a fresh broker, which is what
+ * every CI run gets. In a deployment, topics are provisioned before the
+ * services that use them; the spec does the same. `createTopics` resolves for a
+ * topic that already exists, so a rerun against a long-lived broker is fine.
+ */
+async function createSubscribedTopics(): Promise<void> {
+  const { KafkaJS } = await import('@confluentinc/kafka-javascript');
+  const outbox = await import('../../src/modules/outbox/outbox.constants');
+  const summary = await import('../../src/modules/task-summary/task-summary.contract');
+  const brokers = (process.env.KAFKA_BROKERS ?? '')
+    .split(',')
+    .map((broker) => broker.trim())
+    .filter((broker) => broker.length > 0);
+  const topics = [
+    outbox.OUTBOX_TOPIC_USER_INVITED,
+    outbox.OUTBOX_TOPIC_TASK_CREATED,
+    outbox.OUTBOX_TOPIC_TASK_ASSIGNED,
+    outbox.OUTBOX_TOPIC_TASK_COMPLETED,
+    summary.TASK_SUMMARY_TOPIC,
+    summary.TASK_SUMMARY_REPLY_TOPIC,
+  ].map((topic) => `${TOPIC_PREFIX}${topic}`);
+  const admin = new KafkaJS.Kafka({ kafkaJS: { brokers } }).admin();
+  await admin.connect();
+  try {
+    await admin.createTopics({
+      topics: topics.map((topic) => ({ topic, numPartitions: 1 })),
+    });
+  } finally {
+    await admin.disconnect();
+  }
+}
+
 before(async () => {
   if (!LIVE) return;
   process.env.DATABASE_URL = dbPath;
   process.env.AUTH_SECRET = 'reliable-e2e-test-secret-min-32-characters-x';
+  await createSubscribedTopics();
 
   const { seedDatabase } = await import('../../scripts/seed');
   const seeded = seedDatabase(dbPath);
