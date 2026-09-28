@@ -13,8 +13,13 @@ AI_CODING_GUIDELINES.md
 # Local database files
 *.db
 *.db-journal
+# SQLite in WAL mode keeps these next to the database while it is open.
+*.db-wal
+*.db-shm
 *.sqlite
 *.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
 
 # Generated tRPC schema
 src/@generated/
