@@ -14,6 +14,15 @@ export interface KafkaEnv {
   topicPrefix: string;
 }
 
+export interface RabbitmqEnv {
+  /** True when RABBITMQ_URL is set — the opt-in profile switch. */
+  enabled: boolean;
+  /** The AMQP URL; its vhost is how one broker hosts many environments. */
+  url: string;
+  /** The topic exchange every outbox event is published to. */
+  exchange: string;
+}
+
 export interface AppEnv {
   nodeEnv: 'development' | 'test' | 'production';
   port: number;
@@ -41,6 +50,9 @@ export interface AppEnv {
   // unset the app stays in-process and this block is undefined — Kafka off is
   // byte-for-byte the default behaviour.
   kafka?: KafkaEnv;
+  // Optional: present only when RABBITMQ_URL is set. The two broker profiles
+  // are mutually exclusive — setting both fails at startup.
+  rabbitmq?: RabbitmqEnv;
 }
 
 const MIN_AUTH_SECRET_LENGTH = 32;
@@ -123,9 +135,30 @@ function readKafka(): KafkaEnv | undefined {
   };
 }
 
+// RABBITMQ_URL is the RabbitMQ profile's single opt-in switch, as KAFKA_BROKERS
+// is Kafka's: set it and the outbox relays to RabbitMQ and the inbox consumers
+// subscribe; leave it unset and this returns undefined.
+function readRabbitmq(): RabbitmqEnv | undefined {
+  const url = process.env.RABBITMQ_URL?.trim();
+  if (!url) return undefined;
+  return {
+    enabled: true,
+    url,
+    exchange: process.env.RABBITMQ_EXCHANGE ?? 'reference-app.events',
+  };
+}
+
 export function loadEnv(): AppEnv {
   const nodeEnv = (process.env.NODE_ENV ?? 'development') as AppEnv['nodeEnv'];
   const kafka = readKafka();
+  const rabbitmq = readRabbitmq();
+  if (kafka && rabbitmq) {
+    // One outbox relays to one transport. Picking one silently would leave the
+    // other broker's consumers waiting for events that never come.
+    throw new Error(
+      'KAFKA_BROKERS and RABBITMQ_URL are both set: choose one messaging profile',
+    );
+  }
   return {
     nodeEnv,
     port: readPort(),
@@ -150,5 +183,6 @@ export function loadEnv(): AppEnv {
       60_000,
     ),
     ...(kafka ? { kafka } : {}),
+    ...(rabbitmq ? { rabbitmq } : {}),
   };
 }

@@ -3,7 +3,7 @@
  * Run gated live-broker specs and fail unless every test in them ran.
  *
  * The live-broker specs skip themselves when their broker variable
- * (KAFKA_BROKERS) is unset, so a clone without Docker stays
+ * (RABBITMQ_URL, KAFKA_BROKERS) is unset, so a clone without Docker stays
  * green. In CI that same skip turns a broken wiring into a pass: a job whose
  * broker URL never reached the process reports every test as skipped, and the
  * run is green while proving nothing. CI therefore runs them through this

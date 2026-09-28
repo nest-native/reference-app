@@ -16,6 +16,8 @@ const KEYS = [
   'AUTH_SECRET',
   'NODE_ENV',
   'KAFKA_BROKERS',
+  'RABBITMQ_URL',
+  'RABBITMQ_EXCHANGE',
 ];
 
 describe('loadEnv parsing', () => {
@@ -27,6 +29,8 @@ describe('loadEnv parsing', () => {
     process.env.AUTH_SECRET = 'env-spec-secret-at-least-32-characters-xxxx';
     delete process.env.NODE_ENV; // resolves to 'development'
     delete process.env.KAFKA_BROKERS; // stay in-process
+    delete process.env.RABBITMQ_URL;
+    delete process.env.RABBITMQ_EXCHANGE;
   });
 
   afterEach(() => {
@@ -34,6 +38,29 @@ describe('loadEnv parsing', () => {
       if (saved[key] === undefined) delete process.env[key];
       else process.env[key] = saved[key];
     }
+  });
+
+  test('RABBITMQ_URL: absent keeps the app in-process; set turns the RabbitMQ profile on', () => {
+    assert.equal(loadEnv().rabbitmq, undefined);
+
+    process.env.RABBITMQ_URL = '  amqp://app:secret@broker:5672/prod  ';
+    assert.deepEqual(loadEnv().rabbitmq, {
+      enabled: true,
+      url: 'amqp://app:secret@broker:5672/prod',
+      exchange: 'reference-app.events',
+    });
+
+    process.env.RABBITMQ_EXCHANGE = 'acme.events';
+    assert.equal(loadEnv().rabbitmq?.exchange, 'acme.events');
+
+    process.env.RABBITMQ_URL = '   ';
+    assert.equal(loadEnv().rabbitmq, undefined, 'whitespace is not a URL');
+  });
+
+  test('KAFKA_BROKERS and RABBITMQ_URL together are refused — one outbox, one transport', () => {
+    process.env.KAFKA_BROKERS = 'localhost:9092';
+    process.env.RABBITMQ_URL = 'amqp://localhost:5672';
+    assert.throws(() => loadEnv(), /both set: choose one messaging profile/);
   });
 
   test('readIntFromEnv: fallback when unset, parses positive, rejects NaN and non-positive', () => {

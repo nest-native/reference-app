@@ -63,7 +63,7 @@ app's constitution.
   non-goal**; the useful signal is *which mutants survive* on the files a change
   actually touched. See the local full-mode section below.
 
-### 4. Two Messaging Profiles (KAFKA_BROKERS flips the WHOLE app)
+### 4. Three Messaging Profiles (KAFKA_BROKERS or RABBITMQ_URL flips the WHOLE app)
 
 - **In-process (default).** The outbox relays through an in-process transport
   and handlers build the activity feed synchronously — SQLite in a file, no
@@ -72,11 +72,21 @@ app's constitution.
   through `KafkaOutboxTransport`, with `@KafkaConsumer`s on the other side.
   Event bodies, dedup keys, and wire headers are identical; only the transport
   swaps.
-- `KAFKA_BROKERS` is a **whole-app switch**, not a per-spec flag. **Never export
-  it around the base `npm run test`** — it flips the entire app into the Kafka
-  profile and breaks the in-process integration specs. The dedicated
-  `test:kafka` / `test:full` scripts set it for the live-Kafka spec only and
-  keep the two halves isolated for you.
+- **RabbitMQ.** Setting `RABBITMQ_URL` does the same over RabbitMQ: the outbox
+  relays through `RabbitOutboxTransport` to one topic exchange
+  (`RABBITMQ_EXCHANGE`, default `reference-app.events`), and
+  `RabbitInboxConsumer`s run the same read-sides as the Kafka consumers —
+  through the shared `userInvitedDelivered` and `TaskActivityProjections`, so
+  the two broker profiles cannot drift apart. The app declares its own topology
+  at startup (quorum queues, a dead-letter exchange and a dead-letter queue per
+  consumed queue); the task lifecycle's three topics share one queue and the
+  consumer picks the projection by routing key. The two broker profiles are
+  mutually exclusive: `loadEnv()` refuses both variables at once.
+- `KAFKA_BROKERS` and `RABBITMQ_URL` are **whole-app switches**, not per-spec
+  flags. **Never export either around the base `npm run test`** — each flips
+  the entire app into its broker profile and breaks the in-process integration
+  specs. The dedicated `test:kafka` / `test:rabbitmq` / `test:full` scripts set
+  them for their live-broker spec only and keep the halves isolated for you.
 
 ### 5. The Worker Model (one process drains outbox + jobs)
 
@@ -132,17 +142,19 @@ section. The optional, local-only verification layers live below.
 
 ## Local Full-Mode Verification (optional infra + mutation testing)
 
-Plain `npm test` and the main CI job run without Docker — the live-Kafka e2e
-self-skips, and forks work out of the box. CI runs that spec in its own
-`kafka-e2e` job, against the compose Redpanda, through `test:kafka:strict`
-(`scripts/run-gated-strict.mjs`): it fails unless every test in the spec ran,
-because a spec that skips itself when its broker variable is unset turns a CI
-wiring mistake into a green run. Node's summary cannot be the check — it prints
-`skipped 0` even when a whole skipped suite did not run — and neither can the
-spec reporter's text, which prints a skip's reason in place of the word SKIP;
-so the runner reads a TAP copy of the run and fails on any `# SKIP` or `# TODO`
-directive. The full local flow (`infra:up` + `test:full`) and mutation testing
-stay on-demand local gates, and that is deliberate.
+Plain `npm test` and the main CI job run without Docker — the live-broker specs
+self-skip, and forks work out of the box. CI runs both broker profiles' live
+specs in their own jobs — `rabbitmq-e2e` against a RabbitMQ 4 service
+container, `kafka-e2e` against the compose Redpanda — through
+`test:rabbitmq:strict` and `test:kafka:strict` (`scripts/run-gated-strict.mjs`):
+each fails unless every test in its spec ran, because a spec that skips itself
+when its broker variable is unset turns a CI wiring mistake into a green run.
+Node's summary cannot be the check — it prints `skipped 0` even when a whole
+skipped suite did not run — and neither can the spec reporter's text, which
+prints a skip's reason in place of the word SKIP; so the runner reads a TAP
+copy of the run and fails on any `# SKIP` or `# TODO` directive. The full local
+flow (`infra:up` + `test:full`) and mutation testing stay on-demand local
+gates, and that is deliberate.
 
 ### Gated live-Kafka e2e (real Redpanda broker)
 
@@ -185,6 +197,34 @@ npm run infra:down    # removes the broker container and volume
   in-process integration specs. `test:full` keeps the two halves isolated for
   you.
 
+### Gated live-RabbitMQ e2e (real RabbitMQ 4 broker)
+
+```bash
+npm run infra:up         # Redpanda + RabbitMQ (compose profiles `kafka`, `rabbitmq`)
+npm run test:rabbitmq    # just the live-RabbitMQ spec (RABBITMQ_URL set for it)
+npm run infra:down
+```
+
+- `test:rabbitmq` runs `test/integration/reliable-messaging.rabbitmq.spec.ts`
+  with `RABBITMQ_URL=amqp://app:app@localhost:56721` and
+  `RABBITMQ_MANAGEMENT_URL=http://app:app@localhost:15671`. It proves the
+  RabbitMQ profile end to end: a confirmed publish → exactly one audit row, and
+  a forced redelivery acked as a duplicate; the task lifecycle's three topics
+  on one queue projected into the feed once, with the assignment reminder
+  scheduled; poison dead-lettered with its reason; a delivery on an unknown
+  routing key rejected into the dead-letter exchange; and the broker dropping
+  the app's connection (through the management API), after which the
+  transport and both consumers carry on without a restart. It waits on the
+  consumers' `InboxDeliveries` reports rather than on sleeps.
+- The consumers subscribe again whenever their channel closes
+  (`rabbit-subscription.ts`), not only on the connection's `connect` event: a
+  channel the broker closes on its own, or a cancelled consumer, leaves the
+  connection up, and a `connect`-only consumer would stop without a trace.
+- CI runs the same file in `rabbitmq-e2e`; `npm run test:rabbitmq:strict` with
+  both variables exported is that exact check locally.
+- Do **not** export `RABBITMQ_URL` around the base `npm run test`, for the same
+  reason as `KAFKA_BROKERS`.
+
 ### Mutation testing (Stryker — occasional targeted audit, local only, never in CI)
 
 Run it **deliberately, scoped to a file whose logic you reworked** — not on
@@ -225,5 +265,6 @@ can leave detached test processes that starve the next one.
   kills by hand-applying the mutation + running the suite; note anything found
   in the PR body. Do not run it routinely.
 - Keep mutation testing and the full local flow out of CI. A live-broker spec
-  runs in CI only in its own job, through `scripts/run-gated-strict.mjs` — the
-  main `ci` job stays fast and Docker-free, and forks are unaffected.
+  runs in CI only in its own job, against one real broker, through
+  `scripts/run-gated-strict.mjs` — the main `ci` job stays fast and
+  Docker-free, and forks are unaffected.

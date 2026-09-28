@@ -12,8 +12,10 @@ import {
   OutboxRegistry,
 } from '@nest-native/messaging/in-process';
 import { KafkaOutboxTransport } from '@nest-native/messaging/kafka';
+import { RabbitOutboxTransport } from '@nest-native/messaging/rabbitmq';
 import { SqliteInboxStore, SqliteOutboxStore } from '@nest-native/messaging/sqlite';
-import { loadEnv } from './config/env';
+import type { RecoveringChannelModel } from 'amqplib';
+import { loadEnv, type RabbitmqEnv } from './config/env';
 import { AuthModule } from './auth/auth.module';
 import { RequestContextModule } from './context/request-context.module';
 import { DatabaseModule } from './database/database.module';
@@ -27,6 +29,9 @@ import { TASK_SUMMARY_REPLY_TOPIC } from './modules/task-summary/task-summary.co
 import { TaskSummaryModule } from './modules/task-summary/task-summary.module';
 import { UserInvitedInboxModule } from './modules/inbox/user-invited-inbox.module';
 import { InProcessOutboxModule } from './modules/outbox/in-process-outbox.module';
+import { RabbitmqConnectionModule } from './modules/rabbitmq/rabbitmq-connection.module';
+import { RabbitmqInboxModule } from './modules/rabbitmq/rabbitmq-inbox.module';
+import { RABBITMQ } from './modules/rabbitmq/rabbitmq.topology';
 import { OnboardingModule } from './modules/onboarding/onboarding.module';
 import { RemindersModule } from './modules/reminders/reminders.module';
 import { OrganizationsModule } from './modules/organizations/organizations.module';
@@ -42,12 +47,18 @@ import { AppCacheModule } from './cache/cache.setup';
 // inbox dedup primitive is available for the hermetic test — byte-for-byte the
 // app's pre-Kafka behaviour. With KAFKA_BROKERS set, the global KafkaModule comes
 // online, the claimer publishes through the library's Kafka transport, and the
-// UserInvitedConsumer subscribes. The drizzle client token is global, so the
-// engine resolves the base Drizzle instance from it directly.
-const kafkaEnv = loadEnv().kafka;
+// UserInvitedConsumer subscribes. RABBITMQ_URL is the third profile, and the
+// same shape: the claimer publishes through the library's RabbitMQ transport and
+// the RabbitMQ consumers run the same read-sides. The two broker profiles are
+// mutually exclusive (loadEnv refuses both). The drizzle client token is
+// global, so the engine resolves the base Drizzle instance from it directly.
+const { kafka: kafkaEnv, rabbitmq: rabbitmqEnv } = loadEnv();
 const drizzleInstanceToken = getDrizzleClientToken();
 
 function messagingImports(): NonNullable<ModuleMetadata['imports']> {
+  if (rabbitmqEnv?.enabled) {
+    return rabbitmqMessagingImports(rabbitmqEnv);
+  }
   if (!kafkaEnv?.enabled) {
     return [
       InProcessOutboxModule,
@@ -102,6 +113,31 @@ function messagingImports(): NonNullable<ModuleMetadata['imports']> {
           producer as KafkaProducerService,
           kafkaEnv.topicPrefix,
         ),
+    }),
+  ];
+}
+
+// The RabbitMQ profile: every outbox event is published to one topic exchange
+// with its topic as the routing key, on a confirm channel — a row completes
+// only once the broker acked the message and did not return it. The consumers
+// share the app's connection and run the same read-sides as the Kafka profile.
+function rabbitmqMessagingImports(
+  env: RabbitmqEnv,
+): NonNullable<ModuleMetadata['imports']> {
+  return [
+    RabbitmqConnectionModule.forRoot(env),
+    RabbitmqInboxModule,
+    MessagingModule.forRootAsync({
+      drizzleInstanceToken,
+      outboxStore: new SqliteOutboxStore(),
+      inboxStore: new SqliteInboxStore(),
+      inject: [RABBITMQ],
+      // See the narrow-from-unknown note above: `useTransport` uses `unknown[]`.
+      useTransport: (connection) =>
+        new RabbitOutboxTransport({
+          connection: connection as RecoveringChannelModel,
+          exchange: env.exchange,
+        }),
     }),
   ];
 }

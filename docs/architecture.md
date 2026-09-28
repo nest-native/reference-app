@@ -106,11 +106,13 @@ concrete rather than designing in a vacuum.
               │                                                  │
               │   JobsModule.forRoot  +  RemindersModule         │
               │                                                  │
-              │   ─ messaging profile (KAFKA_BROKERS flips it) ─ │
+              │   ─ messaging profile (a broker env flips it) ─  │
               │   MessagingModule.forRootAsync                   │
-              │     default: InProcessOutboxModule               │
-              │     kafka:   KafkaModule.forRootAsync + the      │
-              │              UserInvited / TaskActivity inboxes  │
+              │     default:  InProcessOutboxModule              │
+              │     kafka:    KafkaModule.forRootAsync + the     │
+              │               UserInvited / TaskActivity inboxes │
+              │     rabbitmq: RabbitmqConnectionModule + the     │
+              │               RabbitmqInboxModule consumers      │
               │                                                  │
               │   OrganizationsModule                            │
               │   UsersModule       ← OnboardingModule           │
@@ -138,7 +140,11 @@ chapter:
 - [`src/app.module.ts`](https://github.com/nest-native/reference-app/blob/main/src/app.module.ts) →
   `MessagingModule.forRootAsync({ … })` with the SQLite outbox/inbox stores,
   and — only when `KAFKA_BROKERS` is set — `KafkaModule.forRootAsync({ … })`
-  plus the Kafka transport and inbox consumers. Same file, both profiles.
+  plus the Kafka transport and inbox consumers; or — only when `RABBITMQ_URL`
+  is set — the app's RabbitMQ connection, `RabbitOutboxTransport`, and the
+  `RabbitInboxConsumer` subscribers in
+  [`src/modules/rabbitmq/`](https://github.com/nest-native/reference-app/blob/main/src/modules/rabbitmq).
+  Same file, every profile.
 - [`src/app.module.ts`](https://github.com/nest-native/reference-app/blob/main/src/app.module.ts) →
   `JobsModule.forRoot({ store, scheduleStore })`; the handlers and the
   bootstrap-declared cron schedule live in

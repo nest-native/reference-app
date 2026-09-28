@@ -16,6 +16,7 @@ import {
   OUTBOX_TOPIC_USER_INVITED,
   type UserInvitedPayload,
 } from '../outbox/outbox.constants';
+import { userInvitedDelivered } from './user-invited.delivery';
 
 // The topic/group/prefix are resolved from env at class-definition time because
 // `@KafkaConsumer` takes a static topic. `loadEnv()` is a pure env read and is
@@ -67,17 +68,7 @@ export class UserInvitedConsumer {
       // Synchronous, DB-only side effect (required by the sqlite sync tx): write
       // the delivery audit row. A throw inside rolls back the dedup row too.
       sideEffect: (invite) => {
-        this.audit.record({
-          orgId: invite.orgId,
-          actorUserId: invite.invitedByUserId,
-          action: 'user.invited.delivered',
-          subjectType: 'user',
-          subjectId: String(invite.invitedUserId),
-          metadata: {
-            invitedEmail: invite.invitedEmail,
-            projectId: invite.projectId,
-          },
-        });
+        this.audit.record(userInvitedDelivered(invite));
       },
       dlqTopic: DLQ_TOPIC,
     });
