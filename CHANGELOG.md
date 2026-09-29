@@ -17,6 +17,40 @@ added them.
   broker it failed about half its runs (the consumers subscribed before their
   topics existed), which #124 fixed by creating the topics first.
 
+### Added — the RabbitMQ messaging profile
+
+- `RABBITMQ_URL` turns on a third messaging profile, dogfooding
+  `@nest-native/messaging/rabbitmq`: the outbox relays through
+  `RabbitOutboxTransport` to one topic exchange (`RABBITMQ_EXCHANGE`, default
+  `reference-app.events`), where a row counts as sent only once the broker has
+  acked it on a confirm channel and not returned it, and `RabbitInboxConsumer`
+  subscribers run the same read-sides as the Kafka profile — the invite audit
+  and the task activity feed, with the assignment reminder scheduled in the
+  same dedup transaction. The app declares its topology at startup (durable
+  quorum queues, each with a dead-letter exchange, routing key and queue); the
+  task lifecycle's three topics share one queue and the consumer picks the
+  projection by routing key. Poison is dead-lettered with its reason. The
+  consumers subscribe again whenever their channel closes, so a dropped
+  connection, a channel the broker closed or a cancelled consumer does not
+  stop them, and the connection carries the name `reference-app` on the
+  broker. `KAFKA_BROKERS` and `RABBITMQ_URL` together are refused at startup.
+  **Runtime dependency added: `amqplib` `^2.2.0`** — the RabbitMQ client the
+  adapter builds on; `@nest-native/messaging` keeps it an optional peer, so
+  the app, which runs the profile, depends on it directly.
+- The broker profiles' side effects are shared, not copied: `user.invited`'s
+  audit row (`userInvitedDelivered`) and the task lifecycle projections
+  (`TaskActivityProjections`) are now used by the Kafka consumers and the
+  RabbitMQ consumers alike.
+- CI gains a `rabbitmq-e2e` job: the gated
+  `reliable-messaging.rabbitmq.spec.ts` runs against a RabbitMQ 4 service
+  container through `test:rabbitmq:strict` (`scripts/run-gated-strict.mjs`),
+  which fails unless every test in it ran; it checks a TAP copy of the run, so
+  a skip given a reason fails it too. The spec also has the broker drop the
+  app's connection through the management API and proves the profile carries
+  on. Locally, `npm run infra:up` now starts RabbitMQ (management API on
+  `127.0.0.1:15671`) next to Redpanda and `npm run test:rabbitmq` runs the
+  spec.
+
 ### Added — local full-mode verification & mutation testing (repo tooling)
 
 - The `redpanda` service in `docker-compose.yml` is now first-class (gated

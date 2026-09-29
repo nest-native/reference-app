@@ -49,6 +49,7 @@ services:
       # KAFKA_BROKERS: redpanda:9092          # opt-in: turns on the Kafka profile
       # KAFKA_TOPIC_PREFIX: ""
       # KAFKA_GROUP_ID: reference-app
+      # RABBITMQ_URL: amqp://app:app@rabbitmq:5672   # or: the RabbitMQ profile (not both)
       AUTH_SECRET: ${AUTH_SECRET:?set AUTH_SECRET (min 32 chars) in .env or shell}
       AUTH_TTL_SECONDS: "3600"
       PORT: "3000"
@@ -81,6 +82,7 @@ services:
       # KAFKA_BROKERS: redpanda:9092          # opt-in: claimer publishes to Kafka
       # KAFKA_TOPIC_PREFIX: ""
       # KAFKA_GROUP_ID: reference-app
+      # RABBITMQ_URL: amqp://app:app@rabbitmq:5672   # or: claimer publishes to RabbitMQ
       AUTH_SECRET: ${AUTH_SECRET:?set AUTH_SECRET (min 32 chars) in .env or shell}
       OUTBOX_POLL_MS: "2000"
       OUTBOX_BATCH_SIZE: "32"
@@ -131,6 +133,28 @@ services:
       retries: 10
     volumes:
       - redpanda-data:/var/lib/redpanda/data
+
+  rabbitmq:
+    # RabbitMQ 4 for the RabbitMQ profile, gated behind the `rabbitmq` profile
+    # like redpanda: plain `docker compose up` keeps the SQLite default, and
+    # `npm run infra:up` starts it for the gated RabbitMQ e2e. `rabbitmq:5672` is
+    # the in-network listener the app containers use; host clients (the gated
+    # spec) use `amqp://app:app@localhost:56721`. The app declares its own
+    # exchanges and queues at startup, so the broker needs no definitions file.
+    image: rabbitmq:4-management
+    container_name: nest-reference-app-rabbitmq
+    profiles: ["rabbitmq"]
+    environment:
+      RABBITMQ_DEFAULT_USER: app
+      RABBITMQ_DEFAULT_PASS: app
+    ports:
+      - "127.0.0.1:56721:5672"   # host listener: RABBITMQ_URL for the gated e2e
+      - "127.0.0.1:15671:15672"  # management API: the e2e drops the app's connection through it
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "check_port_connectivity"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
 
 volumes:
   reference-app-data:

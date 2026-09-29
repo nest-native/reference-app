@@ -10,20 +10,15 @@ import {
 import { type WireHeaderValue } from '@nest-native/messaging';
 import { KafkaInboxConsumer } from '@nest-native/messaging/kafka';
 import { loadEnv } from '../../config/env';
-import { ActivityService } from '../activity/activity.service';
 import {
-  taskCompletedActivity,
-  taskCreatedActivity,
-} from '../activity/task-activity.projection';
-import { TaskAssignedProjection } from '../activity/task-assigned-projection.service';
-import {
-  isTaskAssignedPayload,
-  isTaskCompletedPayload,
-  isTaskCreatedPayload,
   OUTBOX_TOPIC_TASK_ASSIGNED,
   OUTBOX_TOPIC_TASK_COMPLETED,
   OUTBOX_TOPIC_TASK_CREATED,
 } from '../outbox/outbox.constants';
+import {
+  type TaskActivityProjection,
+  TaskActivityProjections,
+} from './task-activity.projections';
 
 // Topics/group resolved from env at class-definition time (like UserInvitedConsumer):
 // the decorators take static strings, and this consumer is only registered under
@@ -42,20 +37,18 @@ const TASK_COMPLETED_TOPIC = `${TOPIC_PREFIX}${OUTBOX_TOPIC_TASK_COMPLETED}`;
  * grouping three topics on one class (no class-level topic; each `@KafkaHandler`
  * names its own). Every handler delegates to the library's {@link
  * KafkaInboxConsumer} engine, which runs broker work outside the dedup tx and
- * the exactly-once `sideEffect` (synchronous + DB-only) inside it. For
- * `task.assigned` the side effect is the shared {@link TaskAssignedProjection}
- * — feed row + deferred assignment-reminder job, joining the dedup transaction
- * — while the other topics write the feed row directly. `dlqTopic`/`source`
- * are derived per topic exactly as the single-topic consumer derives them.
+ * the exactly-once `sideEffect` (synchronous + DB-only) inside it. The side
+ * effects are the shared {@link TaskActivityProjections} — the RabbitMQ
+ * profile's consumer applies the very same ones. `dlqTopic`/`source` are
+ * derived per topic exactly as the single-topic consumer derives them.
  */
 @Injectable()
 @KafkaConsumer(undefined, { groupId: GROUP_ID })
 export class TaskActivityConsumer {
   constructor(
     @Inject(KafkaInboxConsumer) private readonly inbox: KafkaInboxConsumer,
-    @Inject(ActivityService) private readonly activity: ActivityService,
-    @Inject(TaskAssignedProjection)
-    private readonly taskAssigned: TaskAssignedProjection,
+    @Inject(TaskActivityProjections)
+    private readonly projections: TaskActivityProjections,
   ) {}
 
   @KafkaHandler(TASK_CREATED_TOPIC)
@@ -64,12 +57,7 @@ export class TaskActivityConsumer {
     @KafkaHeaders() headers: Record<string, WireHeaderValue>,
     @KafkaCtx() context: KafkaContext,
   ): Promise<void> {
-    await this.project(TASK_CREATED_TOPIC, payload, headers, context, {
-      validate: isTaskCreatedPayload,
-      apply: (value) => {
-        this.activity.record(taskCreatedActivity(value));
-      },
-    });
+    await this.project(TASK_CREATED_TOPIC, payload, headers, context, this.projections.taskCreated);
   }
 
   @KafkaHandler(TASK_ASSIGNED_TOPIC)
@@ -78,15 +66,7 @@ export class TaskActivityConsumer {
     @KafkaHeaders() headers: Record<string, WireHeaderValue>,
     @KafkaCtx() context: KafkaContext,
   ): Promise<void> {
-    await this.project(TASK_ASSIGNED_TOPIC, payload, headers, context, {
-      validate: isTaskAssignedPayload,
-      // Joins the dedup transaction (synchronously, on better-sqlite3) and
-      // enqueues the assignment-reminder job atomically with the feed row; the
-      // `void` discards the Promise the @Transactional signature imposes.
-      apply: (value) => {
-        void this.taskAssigned.apply(value);
-      },
-    });
+    await this.project(TASK_ASSIGNED_TOPIC, payload, headers, context, this.projections.taskAssigned);
   }
 
   @KafkaHandler(TASK_COMPLETED_TOPIC)
@@ -95,12 +75,7 @@ export class TaskActivityConsumer {
     @KafkaHeaders() headers: Record<string, WireHeaderValue>,
     @KafkaCtx() context: KafkaContext,
   ): Promise<void> {
-    await this.project(TASK_COMPLETED_TOPIC, payload, headers, context, {
-      validate: isTaskCompletedPayload,
-      apply: (value) => {
-        this.activity.record(taskCompletedActivity(value));
-      },
-    });
+    await this.project(TASK_COMPLETED_TOPIC, payload, headers, context, this.projections.taskCompleted);
   }
 
   // Shared engine call: dedup-scope + DLQ derived from the topic, the payload
@@ -111,18 +86,15 @@ export class TaskActivityConsumer {
     payload: unknown,
     headers: Record<string, WireHeaderValue>,
     context: KafkaContext,
-    projection: {
-      validate: (value: unknown) => value is T;
-      apply: (value: T) => void;
-    },
+    projection: TaskActivityProjection<T>,
   ): Promise<void> {
     await this.inbox.consume<T>({
       source: `${topic}:${GROUP_ID}`,
       context,
       headers,
       payload,
-      validate: projection.validate,
-      sideEffect: projection.apply,
+      validate: (value): value is T => projection.validate(value),
+      sideEffect: (value) => projection.apply(value),
       dlqTopic: `${topic}.DLQ`,
     });
   }

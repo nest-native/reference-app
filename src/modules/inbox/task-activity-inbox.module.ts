@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { KafkaInboxConsumer } from '@nest-native/messaging/kafka';
 import { ActivityModule } from '../activity/activity.module';
 import { TaskActivityConsumer } from './task-activity.consumer';
+import { TaskActivityProjections } from './task-activity.projections';
 
 /**
  * The Kafka-profile wiring for the activity feed — the read-model twin of {@link
@@ -16,6 +17,6 @@ import { TaskActivityConsumer } from './task-activity.consumer';
  */
 @Module({
   imports: [ActivityModule],
-  providers: [KafkaInboxConsumer, TaskActivityConsumer],
+  providers: [KafkaInboxConsumer, TaskActivityProjections, TaskActivityConsumer],
 })
 export class TaskActivityInboxModule {}

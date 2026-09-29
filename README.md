@@ -16,7 +16,7 @@ Follow one journey through the code and every library shows up where a real syst
 
 1. **An org invites a teammate.** `OrganizationOnboardingService.inviteUser()` writes the user + membership + project rows **and** enqueues a `user.invited` event — all in one transaction.
 2. **They open a project and work tasks.** Create → assign → complete a task; each writes the task row **and** emits a `task.created` / `task.assigned` / `task.completed` domain event **in the same transaction** (no lost events, no phantom events).
-3. **The events flow over Kafka.** A background claimer relays committed events to the broker; consumers turn them into an **activity feed** read-model — deduplicated, so an at-least-once redelivery never double-counts.
+3. **The events flow over a broker — Kafka or RabbitMQ.** A background claimer relays committed events to the broker; consumers turn them into an **activity feed** read-model — deduplicated, so an at-least-once redelivery never double-counts.
 4. **Assigning schedules a reminder.** The same delivery that projects `task.assigned` into the feed also enqueues a delayed **assignment-reminder job** — in the same transaction, keyed by the event's dedup key — and the worker fires it exactly once when due. The queue is a table in the same database; no Redis.
 5. **Nightly, nobody enqueues anything.** A `job_schedules` row declared at bootstrap makes the worker enqueue a **stale-task sweep** on a cron — it survives restarts, is safe across instances, and can be turned off at runtime without a deploy.
 5. **The event contracts are published.** An **AsyncAPI 3.0 catalog** at `/asyncapi` documents every event so another team could subscribe to your streams.
@@ -38,12 +38,13 @@ Follow one journey through the code and every library shows up where a real syst
 
 Underneath, [`@nestjs-cls/transactional`](https://www.npmjs.com/package/@nestjs-cls/transactional) (with the official Drizzle adapter) ties the outbox write to the business write — its `transactionMode: 'auto'` runs the same `@Transactional()` code against better-sqlite3's synchronous driver locally and an async driver in production.
 
-## Two profiles, one codebase
+## Three profiles, one codebase
 
 Everything above runs **with no infrastructure** by default:
 
 - **In-process (default)** — the outbox relays through an in-process transport and handlers build the activity feed synchronously. SQLite in a file, no broker. This is what the tests exercise.
 - **Kafka** — set `KAFKA_BROKERS` and the exact same domain code relays through `KafkaOutboxTransport` to a real cluster, with `@KafkaConsumer`s on the other side. The event bodies, dedup keys, and wire headers are identical; only the transport swaps.
+- **RabbitMQ** — set `RABBITMQ_URL` instead and the same code relays through `RabbitOutboxTransport` to one topic exchange: a row counts as sent only once the broker has acked it on a confirm channel and not returned it. `RabbitInboxConsumer`s run the same read-sides as the Kafka consumers, from quorum queues the app declares at startup — the task lifecycle's three topics share one queue, routed by key — and poison lands in a dead-letter queue with its reason. The two broker profiles are exclusive; set one.
 
 ## Auth, tenancy, and roles
 
@@ -127,8 +128,8 @@ curl -N -X POST localhost:3000/projects/1/assistant -H 'authorization: Bearer <j
 ```
 src/
   main.ts                  Nest bootstrap + AsyncApiModule.setup('/asyncapi', ...)
-  app.module.ts            Root module, ClsPluginTransactional, in-process/Kafka messaging profiles
-  config/env.ts            loadEnv() — single source of truth (incl. the optional kafka block)
+  app.module.ts            Root module, ClsPluginTransactional, in-process/Kafka/RabbitMQ messaging profiles
+  config/env.ts            loadEnv() — single source of truth (incl. the optional kafka and rabbitmq blocks)
   database/                DrizzleModule wiring + schema (orgs/users/projects/tasks/activity/...) + migrations
   auth/                    scrypt passwords, HS256 JWT, AuthGuard + RolesGuard/@Roles, middleware; @nest-native/lockout login lockout (lockout.setup.ts)
   cache/                   @nest-native/cache read caching — tag invalidation through @stalefree/core (cache.setup.ts)
@@ -138,7 +139,8 @@ src/
     tasks/                             the work-item domain — CRUD + lifecycle events
     activity/                          the event-fed activity feed read-model + router
     onboarding/                        OrganizationOnboardingService — the @Transactional invite flow
-    outbox/ inbox/                     the messaging pair (in-process handlers + Kafka consumers)
+    outbox/ inbox/                     the messaging pair (in-process handlers + Kafka consumers + the shared read-side effects)
+    rabbitmq/                          the RabbitMQ profile — connection, topology, RabbitInboxConsumer subscribers
     reminders/                         the @nest-native/jobs chapter — the deferred assignment reminder + the scheduled stale-task sweep
     events-catalog/                    @nest-native/asyncapi event declarations
     assistant/                         @nest-native/ai-sdk streaming project assistant
@@ -160,21 +162,22 @@ npm run ci            # typecheck, lint, complexity (≤15), docs:check, test:co
 
 Coverage here is **pragmatic, not 100%** — the 100% bar belongs to the libraries. The transactional workflow, the outbox worker, the inbox dedup, the reminder job's exactly-once scheduling and execution, the AsyncAPI catalog, the AI stream, and the login-lockout gate (fail N times → 429, even the right password is refused while locked), and cache coherence (mutations refresh cached reads long before TTL — tag invalidation, not expiry) all have explicit tests, as do the tenancy and role checks (cross-org project/assignee refused like a missing one with nothing committed; viewer/member/admin limits and revocation over real HTTP). CI runs on **Node 22**.
 
-A dedicated `kafka-e2e` CI job runs the Kafka profile end to end against a real
-Redpanda broker, and fails if the gated spec skipped — so the Kafka claims above
-are checked on every PR.
+Dedicated `rabbitmq-e2e` and `kafka-e2e` CI jobs run both broker profiles end
+to end against real brokers (a RabbitMQ 4 service container, the compose
+Redpanda), and each fails if its gated spec skipped — so the broker claims
+above are checked on every PR.
 
 Two **optional, local-only** layers sit on top (forks work without them):
 
 - **Full mode** — `npm run infra:up && npm run test:full` runs the base suite
-  plus the gated live-Kafka e2e against a disposable Redpanda broker
-  (`docker-compose.yml`, compose profile `kafka`, `127.0.0.1:19092`);
-  `npm run infra:down` cleans up.
+  plus the gated live-Kafka and live-RabbitMQ e2e specs against disposable
+  brokers (`docker-compose.yml`, compose profiles `kafka` and `rabbitmq`,
+  `127.0.0.1:19092` and `127.0.0.1:56721`); `npm run infra:down` cleans up.
 - **Mutation testing** — `npm run test:mutation` (incremental Stryker run;
   `test:mutation:full` re-tests everything). Scope with `STRYKER_MUTATE`,
   include the live-Kafka spec with `STRYKER_WITH_INFRA=1`.
 
-Details — including the `KAFKA_BROKERS`-flips-the-app warning, the pre-PR
+Details — including the `KAFKA_BROKERS`/`RABBITMQ_URL`-flip-the-app warning, the pre-PR
 ritual, and agent instructions — in
 [GUIDELINES_NEST_REFERENCE_APP.md](GUIDELINES_NEST_REFERENCE_APP.md#local-full-mode-verification-optional-infra--mutation-testing).
 
@@ -188,7 +191,7 @@ One row per library, in chapter order:
 | NestJS | `11.x` |
 | `@nest-native/drizzle` | `0.5.x` |
 | `@nest-native/trpc` | `0.7.x` |
-| `@nest-native/messaging` | `0.6.x` |
+| `@nest-native/messaging` | `0.7.x` |
 | `@nest-native/kafka` | `0.5.x` |
 | `@nest-native/jobs` | `0.3.x` |
 | `@nest-native/asyncapi` | `0.3.x` |

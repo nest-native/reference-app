@@ -124,3 +124,41 @@ jobs:
       - name: Dump broker logs on failure
         if: failure()
         run: docker logs nest-reference-app-redpanda || true
+
+  rabbitmq-e2e:
+    name: RabbitMQ profile e2e (live broker)
+    runs-on: ubuntu-latest
+    # The RabbitMQ profile's gated end-to-end spec
+    # (test/integration/reliable-messaging.rabbitmq.spec.ts) against a real
+    # RabbitMQ 4. The spec skips when RABBITMQ_URL is unset, so this job runs it
+    # through test:rabbitmq:strict, which fails unless every test in it ran —
+    # a wiring mistake here cannot pass as green.
+    services:
+      rabbitmq:
+        image: rabbitmq:4-management
+        env:
+          RABBITMQ_DEFAULT_USER: app
+          RABBITMQ_DEFAULT_PASS: app
+        ports:
+          - 5672:5672
+          - 15672:15672
+        options: >-
+          --health-cmd "rabbitmq-diagnostics -q check_port_connectivity"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 60
+
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run the RabbitMQ profile against a live broker
+        env:
+          RABBITMQ_URL: amqp://app:app@127.0.0.1:5672
+          RABBITMQ_MANAGEMENT_URL: http://app:app@127.0.0.1:15672
+        run: npm run test:rabbitmq:strict
