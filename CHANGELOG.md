@@ -6,6 +6,17 @@ added them.
 
 ## [Unreleased]
 
+### Added — the Kafka profile's live e2e runs in CI
+
+- A `kafka-e2e` job starts the compose Redpanda and runs
+  `reliable-messaging.kafka.spec.ts` through the new `test:kafka:strict`
+  (`scripts/run-gated-strict.mjs`), which fails unless every test in the spec
+  ran: it checks a TAP copy of the run, because Node's summary prints
+  `skipped 0` for a skipped suite and the spec reporter prints a skip's reason
+  in place of SKIP. The spec could not run in CI before: against a fresh
+  broker it failed about half its runs (the consumers subscribed before their
+  topics existed), which #124 fixed by creating the topics first.
+
 ### Added — local full-mode verification & mutation testing (repo tooling)
 
 - The `redpanda` service in `docker-compose.yml` is now first-class (gated

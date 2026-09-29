@@ -89,3 +89,38 @@ jobs:
             coverage/lcov.info
             coverage/lcov-report/**
           if-no-files-found: warn
+
+  kafka-e2e:
+    name: Kafka profile e2e (live broker)
+    runs-on: ubuntu-latest
+    # The Kafka profile's gated end-to-end spec
+    # (test/integration/reliable-messaging.kafka.spec.ts) against the Redpanda
+    # broker docker-compose.yml defines — the one `npm run infra:up` starts
+    # locally. It is started with compose rather than as a service container,
+    # because a service container cannot be given Redpanda's start flags. The
+    # spec skips when KAFKA_BROKERS is unset, so this job runs it through
+    # test:kafka:strict, which fails unless every test in it ran — a wiring
+    # mistake here cannot pass as green.
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Start Redpanda
+        # AUTH_SECRET only satisfies the compose file's parse-time check for the
+        # api/worker services; it never reaches the broker.
+        run: AUTH_SECRET=infra-only-placeholder docker compose --profile kafka up -d --wait redpanda
+
+      - name: Run the Kafka profile against a live broker
+        env:
+          KAFKA_BROKERS: localhost:19092
+          KAFKA_TOPIC_PREFIX: reliable-e2e.
+        run: npm run test:kafka:strict
+
+      - name: Dump broker logs on failure
+        if: failure()
+        run: docker logs nest-reference-app-redpanda || true

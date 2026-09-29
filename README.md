@@ -160,8 +160,11 @@ npm run ci            # typecheck, lint, complexity (≤15), docs:check, test:co
 
 Coverage here is **pragmatic, not 100%** — the 100% bar belongs to the libraries. The transactional workflow, the outbox worker, the inbox dedup, the reminder job's exactly-once scheduling and execution, the AsyncAPI catalog, the AI stream, and the login-lockout gate (fail N times → 429, even the right password is refused while locked), and cache coherence (mutations refresh cached reads long before TTL — tag invalidation, not expiry) all have explicit tests, as do the tenancy and role checks (cross-org project/assignee refused like a missing one with nothing committed; viewer/member/admin limits and revocation over real HTTP). CI runs on **Node 22**.
 
-Two **optional, local-only** layers sit on top (neither runs in CI, and forks
-work without them):
+A dedicated `kafka-e2e` CI job runs the Kafka profile end to end against a real
+Redpanda broker, and fails if the gated spec skipped — so the Kafka claims above
+are checked on every PR.
+
+Two **optional, local-only** layers sit on top (forks work without them):
 
 - **Full mode** — `npm run infra:up && npm run test:full` runs the base suite
   plus the gated live-Kafka e2e against a disposable Redpanda broker

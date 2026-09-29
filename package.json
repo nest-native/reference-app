@@ -37,6 +37,7 @@
     "infra:up": "AUTH_SECRET=${AUTH_SECRET:-infra-only-placeholder} docker compose --profile kafka up -d --wait redpanda",
     "infra:down": "AUTH_SECRET=${AUTH_SECRET:-infra-only-placeholder} docker compose --profile kafka down -v redpanda",
     "test:kafka": "KAFKA_BROKERS=localhost:19092 KAFKA_TOPIC_PREFIX=reliable-e2e. node --import tsx --test test/integration/reliable-messaging.kafka.spec.ts",
+    "test:kafka:strict": "node scripts/run-gated-strict.mjs test/integration/reliable-messaging.kafka.spec.ts",
     "test:full": "npm run test && npm run test:kafka",
     "test:mutation": "stryker run",
     "test:mutation:full": "stryker run --force",
