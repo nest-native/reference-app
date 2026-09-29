@@ -132,10 +132,17 @@ section. The optional, local-only verification layers live below.
 
 ## Local Full-Mode Verification (optional infra + mutation testing)
 
-Everything in this section is **opt-in and local-only**. Plain `npm test` and
-CI run without Docker — the live-Kafka e2e self-skips, and forks work out of the
-box. **CI never runs any of this** (neither the broker-backed spec nor mutation
-testing); it is an on-demand local gate, and that is deliberate.
+Plain `npm test` and the main CI job run without Docker — the live-Kafka e2e
+self-skips, and forks work out of the box. CI runs that spec in its own
+`kafka-e2e` job, against the compose Redpanda, through `test:kafka:strict`
+(`scripts/run-gated-strict.mjs`): it fails unless every test in the spec ran,
+because a spec that skips itself when its broker variable is unset turns a CI
+wiring mistake into a green run. Node's summary cannot be the check — it prints
+`skipped 0` even when a whole skipped suite did not run — and neither can the
+spec reporter's text, which prints a skip's reason in place of the word SKIP;
+so the runner reads a TAP copy of the run and fails on any `# SKIP` or `# TODO`
+directive. The full local flow (`infra:up` + `test:full`) and mutation testing
+stay on-demand local gates, and that is deliberate.
 
 ### Gated live-Kafka e2e (real Redpanda broker)
 
@@ -154,6 +161,9 @@ npm run infra:down    # removes the broker container and volume
   that spec only. It proves the Reliable Messaging Pair end to end: a
   transactional enqueue → the outbox claimer publishes to Kafka → the inbox
   consumer deduplicates → exactly one audit row, even after a forced redelivery.
+- CI runs the same file in `kafka-e2e`; `npm run test:kafka:strict` with
+  `KAFKA_BROKERS` and `KAFKA_TOPIC_PREFIX` exported is that exact check
+  locally.
 - **AUTH_SECRET compose interpolation.** `infra:up` / `infra:down` prefix
   `AUTH_SECRET=${AUTH_SECRET:-infra-only-placeholder}` because the app and worker
   services in `docker-compose.yml` interpolate a *required*
@@ -214,5 +224,6 @@ can leave detached test processes that starve the next one.
   When you've reworked a file's logic, scope `STRYKER_MUTATE` to it and verify
   kills by hand-applying the mutation + running the suite; note anything found
   in the PR body. Do not run it routinely.
-- Never wire any of this into CI — CI stays fast and Docker-free, and forks are
-  unaffected.
+- Keep mutation testing and the full local flow out of CI. A live-broker spec
+  runs in CI only in its own job, through `scripts/run-gated-strict.mjs` — the
+  main `ci` job stays fast and Docker-free, and forks are unaffected.
