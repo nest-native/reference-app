@@ -6,6 +6,19 @@ added them.
 
 ## [Unreleased]
 
+### Changed — Biome replaces ESLint (repo tooling)
+
+- `npm run lint` and the cognitive-complexity gate run on Biome, as the
+  libraries' complexity gates now do. ESLint was here for three core rules
+  (`no-console` allowing `warn`/`error`, `prefer-const`, `eqeqeq`) plus
+  `sonarjs/cognitive-complexity`, with `@typescript-eslint/parser` only to parse
+  TypeScript, and that parser refuses TypeScript 7. Biome carries the same
+  rules (`noConsole`, `useConst`, `noDoubleEquals` with `ignoreNull: false`, and
+  `noExcessiveCognitiveComplexity` at 15 on `src/`), has no TypeScript
+  dependency, and drops the ESLint toolchain. Its complexity metric scores
+  slightly higher than SonarJS at identical code; `complexity:report` lists
+  every function scoring 2 or more.
+
 ### Changed — jobs 0.5, drizzle 0.5.1, and the remaining advisories
 
 - `@nest-native/jobs` `^0.5.0`: a job's outcome is recorded only under the
