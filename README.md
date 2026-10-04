@@ -193,7 +193,7 @@ One row per library, in chapter order:
 | `@nest-native/trpc` | `0.7.x` |
 | `@nest-native/messaging` | `0.8.x` |
 | `@nest-native/kafka` | `0.6.x` |
-| `@nest-native/jobs` | `0.4.x` |
+| `@nest-native/jobs` | `0.5.x` |
 | `@nest-native/asyncapi` | `0.3.x` |
 | `@nest-native/ai-sdk` | `0.6.x` (on `ai@7`) |
 | `@nest-native/cache` | `0.1.x` (on `@stalefree/core` `0.1.x`) |

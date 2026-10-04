@@ -46,13 +46,22 @@ async function main(): Promise<void> {
     );
   }
 
+  // `lost` counts claims this worker let go without recording an outcome
+  // (another worker took them over after stuckTimeoutMs); a steady non-zero
+  // value means batches take longer than the stuck timeout.
   const reportTick = (
     loop: string,
-    report: { claimed: number; completed: number; retried: number; failed: number },
+    report: {
+      claimed: number;
+      completed: number;
+      retried: number;
+      failed: number;
+      lost: number;
+    },
   ) => {
     if (report.claimed > 0) {
       logger.log(
-        `${loop} tick claimed=${report.claimed} completed=${report.completed} retried=${report.retried} failed=${report.failed}`,
+        `${loop} tick claimed=${report.claimed} completed=${report.completed} retried=${report.retried} failed=${report.failed} lost=${report.lost}`,
       );
     }
   };
@@ -75,9 +84,8 @@ async function main(): Promise<void> {
         claimer: {
           batchSize: env.outbox.batchSize,
           stuckTimeoutMs: env.outbox.stuckTimeoutMs,
-          ...(env.outbox.workerInstanceId
-            ? { workerInstanceId: env.outbox.workerInstanceId }
-            : {}),
+          // Unset keeps the library default (`<hostname>-<pid>`).
+          workerInstanceId: env.outbox.workerInstanceId,
         },
         signal: controller.signal,
         onTick: (report) => reportTick('outbox', report),
@@ -88,9 +96,8 @@ async function main(): Promise<void> {
         runner: {
           batchSize: env.outbox.batchSize,
           stuckTimeoutMs: env.outbox.stuckTimeoutMs,
-          ...(env.outbox.workerInstanceId
-            ? { workerInstanceId: env.outbox.workerInstanceId }
-            : {}),
+          // Unset keeps the library default (`<hostname>-<pid>`).
+          workerInstanceId: env.outbox.workerInstanceId,
         },
         signal: controller.signal,
         onTick: (report) => reportTick('jobs', report),
