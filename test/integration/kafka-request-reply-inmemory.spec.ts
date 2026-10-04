@@ -4,6 +4,13 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, test } from 'node:test';
 import type { INestApplicationContext } from '@nestjs/common';
+// Static, unlike the env-reading imports below: the CLS packages ship separate
+// ESM and CommonJS builds, and a dynamic import() here would load the ESM copy
+// while src/ (compiled to CommonJS) requires the other one — two copies whose
+// injection tokens never match.
+import { ClsPluginTransactional } from '@nestjs-cls/transactional';
+import { TransactionalAdapterDrizzleOrm } from '@nestjs-cls/transactional-adapter-drizzle-orm';
+import { ClsModule } from 'nestjs-cls';
 
 // Drives the task-summary request-reply exchange against the in-memory broker
 // (KafkaTestModule) — the dummy broker address is NEVER dialed — so the whole
@@ -44,11 +51,6 @@ before(async () => {
   schema = await import('../../src/database/schema');
   const { Module } = await import('@nestjs/common');
   const { NestFactory } = await import('@nestjs/core');
-  const { ClsPluginTransactional } = await import('@nestjs-cls/transactional');
-  const { TransactionalAdapterDrizzleOrm } = await import(
-    '@nestjs-cls/transactional-adapter-drizzle-orm'
-  );
-  const { ClsModule } = await import('nestjs-cls');
   const { getDrizzleClientToken } = await import('@nest-native/drizzle');
   const { DatabaseModule } = await import('../../src/database/database.module');
   const { TaskSummaryClient } = await import(

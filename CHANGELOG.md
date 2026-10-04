@@ -6,6 +6,23 @@ added them.
 
 ## [Unreleased]
 
+### Changed — messaging 0.8, jobs 0.4 and `@nestjs-cls/transactional` 4
+
+- `@nest-native/messaging` `^0.8.1` and `@nest-native/jobs` `^0.4.0`: outbox
+  and job claims are exclusive across workers (`FOR UPDATE SKIP LOCKED`), and a
+  dropped Postgres connection no longer crashes a claim. The app's stores are
+  SQLite, a single writer, so those fixes change nothing here.
+- `nestjs-cls` `^7.0.1`, `@nestjs-cls/transactional` `^4.0.1` and
+  `@nestjs-cls/transactional-adapter-drizzle-orm` `^2.0.1`, together:
+  transactional 4 needs the other two (supersedes Dependabot's #119, which
+  bumped transactional alone). These now ship separate ESM and CommonJS
+  builds, so the two in-memory Kafka specs import them statically: a dynamic
+  `import()` loaded the ESM copy while `src/` required the CommonJS one, and
+  the two copies' injection tokens never matched.
+- `npm audit fix` clears three high advisories (`@nestjs/microservices`
+  11.2.7, `brace-expansion` 5.0.12, `undici` 7.30.0) that failed
+  `security:audit`, all inside the existing ranges.
+
 ### Added — the Kafka profile's live e2e runs in CI
 
 - A `kafka-e2e` job starts the compose Redpanda and runs
