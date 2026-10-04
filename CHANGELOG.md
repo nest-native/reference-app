@@ -6,6 +6,23 @@ added them.
 
 ## [Unreleased]
 
+### Changed — jobs 0.5, drizzle 0.5.1, and the remaining advisories
+
+- `@nest-native/jobs` `^0.5.0`: a job's outcome is recorded only under the
+  claim that took it, so a worker whose claim was taken over records
+  nothing, and the job counts in the new `TickReport.lost`. The worker's tick
+  log now prints `lost` for both loops (messaging 0.8 reports it too), and
+  `OUTBOX_WORKER_ID` passes straight through: both libraries treat an unset
+  value as "keep the default" now.
+- `@nest-native/drizzle` `^0.5.1` guards node-postgres pools against a
+  dropped connection inside `@Transactional()`. The app runs on SQLite, so
+  that changes nothing here.
+- `npm audit` is clean: drizzle-kit 0.31 still loads configs through
+  `@esbuild-kit`, which pins esbuild 0.18 (GHSA-67mh-4wv8-2f99, its dev
+  server); a scoped override moves it to the esbuild 0.25 drizzle-kit itself
+  uses (`db:generate` and `drizzle-kit check` still run). The `multer` and
+  `qs` override floors rise to their first fixed releases.
+
 ### Changed — messaging 0.8, jobs 0.4 and `@nestjs-cls/transactional` 4
 
 - `@nest-native/messaging` `^0.8.1` and `@nest-native/jobs` `^0.4.0`: outbox
