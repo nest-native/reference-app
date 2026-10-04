@@ -78,8 +78,8 @@ otherwise have to answer from scratch:
   and runs one query + one mutation + one auth-protected call against a
   live local server. `client-smoke:typecheck` is in `npm run ci`.
 
-- **What does the boring scaffolding actually look like?** ESLint flat
-  config with a cognitive-complexity ceiling of 15, `drizzle-kit`
+- **What does the boring scaffolding actually look like?** Biome for lint
+  and a cognitive-complexity ceiling of 15, `drizzle-kit`
   forward-only migrations, `node:test` + `c8` coverage, an `npm run ci`
   chain (`typecheck → lint → complexity → tests → audit → build`), a
   Dockerfile that runs both API and worker off the same image. All of
