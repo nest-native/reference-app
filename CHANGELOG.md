@@ -6,6 +6,26 @@ added them.
 
 ## [Unreleased]
 
+### Changed — messaging 0.8.3 and jobs 0.5.2: the worker's claims wait for the API
+
+- `@nest-native/messaging` `^0.8.3` and `@nest-native/jobs` `^0.5.2`: the
+  SQLite outbox and job claims open with `BEGIN IMMEDIATE`. The API and the
+  worker are two processes on one SQLite file. A claim used to read first and
+  ask for the write lock at its UPDATE, and when the API held that lock SQLite
+  failed the claim at once with "database is locked": the worker logged
+  `outbox tick failed` or `jobs tick failed` and picked the rows up on a later
+  poll. The claim now waits for the lock like any other writer.
+- `createDatabase()` passes better-sqlite3's `timeout` explicitly (5 s, its
+  default), since both claims now wait on it.
+- In-range updates: `ai` 7.0.127, `@ai-sdk/openai` 4.0.83, `@trpc/server` and
+  `@trpc/client` 11.19.0, `drizzle-orm` 0.45.3, `drizzle-kit` 0.31.11 (no
+  migration drift: `db:generate` finds nothing, `drizzle-kit check` passes),
+  `zod` 4.6.5, `@types/node` 26.6.4 and `@biomejs/biome` 2.5.15 (the three
+  Biome configs move to its schema). NestJS 12 and TypeScript 7 stay out, as
+  in the libraries.
+- `npm run lint:fix` runs `biome lint --write .`; it still called ESLint,
+  which the Biome change below removed.
+
 ### Changed — Biome replaces ESLint (repo tooling)
 
 - `npm run lint` and the cognitive-complexity gate run on Biome, as the
