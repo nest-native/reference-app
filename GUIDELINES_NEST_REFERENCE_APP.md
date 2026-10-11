@@ -1,24 +1,24 @@
 # GUIDELINES_NEST_REFERENCE_APP.md
 
-## Core Philosophy - This app SERVES the nine nest-native libraries
+## Core Philosophy - This app SERVES the eight nest-native libraries
 
 This is `nest-native/reference-app`: a production-shaped, multi-tenant
-work-tracking SaaS whose only job is to put **all nine
-[nest-native](https://github.com/nest-native) libraries** — `drizzle`, `trpc`,
-`messaging`, `kafka`, `jobs`, `asyncapi`, `ai-sdk`, `lockout`, and `cache` — under
-realistic backend pressure and show how they compose. It is **read first and
-run second**. Every decision optimizes for a reader who wants to lift a pattern
-into their own app.
+work-tracking SaaS whose only job is to put **all eight
+[nest-native](https://github.com/nest-native) libraries** — `trpc`, `messaging`,
+`kafka`, `jobs`, `asyncapi`, `ai-sdk`, `lockout`, and `cache` — under realistic
+backend pressure, on the official `@nestjs/drizzle` module, and show how they
+compose. It is **read first and run second**. Every decision optimizes for a
+reader who wants to lift a pattern into their own app.
 
 Follow these assumptions in **EVERY** file you generate or modify. This is the
 app's constitution.
 
 ### 1. What This App Is (and Is Not)
 
-- It **serves the libraries**. Every module exists to exercise one of the nine
-  under realistic pressure — persistence, a typed API, reliable domain events,
-  an event backbone, deferred jobs, a documented event catalog, a streaming AI
-  assistant, brute-force login lockout, and tag-invalidated read caching.
+- It **serves the libraries**. Every module exists to exercise one of the eight
+  under realistic pressure — a typed API, reliable domain events, an event
+  backbone, deferred jobs, a documented event catalog, a streaming AI assistant,
+  brute-force login lockout, and tag-invalidated read caching.
 - It is **not** a product, **not** a starter or scaffold, and **not** a generic
   NestJS boilerplate. There is no CLI, no second frontend, no multi-database
   story, no GraphQL — those are deliberate omissions, not gaps to fill.
@@ -29,6 +29,12 @@ app's constitution.
 - Stay **honest about each library**. Drizzle stays SQL-first, tRPC stays tRPC,
   the outbox is a real database table. No functional wrappers around library
   decorators, no local shims that hide what a library actually does.
+- **Persistence runs on the official `@nestjs/drizzle`.** NestJS shipped its
+  own Drizzle module in 2026-09, covering what `@nest-native/drizzle` was used
+  for here, so the app moved to it rather than compete with the framework:
+  `DrizzleModule.forRoot({ db })`, plain `@Injectable()` repositories, and
+  transactions from `@nestjs-cls/transactional`. The nest-native libraries
+  take its `getDrizzleToken()` as their `drizzleInstanceToken`.
 - Use only each library's **primary onboarding API** (`*.forRoot()` /
   `forRootAsync()` / `forFeature()`, the public decorators). Reaching into a
   package's internals is a smell — if you need an internal, the public API has a
@@ -103,12 +109,12 @@ app's constitution.
 
 ### 6. The Roster Is a Claim (change it in ONE change)
 
-- "All nine libraries" is this app's headline claim, and it is stated in
+- "All eight libraries" is this app's headline claim, and it is stated in
   **four** places that drift apart silently. When the roster changes — a
   library added, dropped, or renamed — all four move **in the same PR**:
   1. `package.json` `description` — the count word and every
      `@nest-native/*` name.
-  2. `README.md` — the badge, the "Nine libraries, nine chapters" table, and
+  2. `README.md` — the badge, the "Eight libraries, eight chapters" table, and
      the **Compatibility** table (one row per library, versions read off
      `package.json`).
   3. `docs/` — the Pages site: `index.html`'s lede and roster grid, plus
@@ -123,7 +129,7 @@ app's constitution.
   name goes stale in `package.json`, the README, or the Pages site. Bump a
   library, run it.
 - Prefer **dynamic or roster-free badges** over hardcoded ones. A
-  `libraries-9/9` badge is a version literal in disguise; keep it checked (it
+  `libraries-8/8` badge is a version literal in disguise; keep it checked (it
   is) or drop it, but never leave it to be updated from memory.
 - Any check of this kind **iterates the declared dependencies** — every
   `@nest-native/*` key in `package.json` — instead of hardcoding a list of

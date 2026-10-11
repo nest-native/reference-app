@@ -6,7 +6,7 @@ import { after, before, test } from 'node:test';
 import type { INestApplicationContext } from '@nestjs/common';
 import { ContextIdFactory, NestFactory } from '@nestjs/core';
 import { and, eq } from 'drizzle-orm';
-import { getDrizzleClientToken } from '@nest-native/drizzle';
+import { getDrizzleToken } from '@nestjs/drizzle';
 import { hashPassword } from '../../src/auth/password';
 import { AuthService } from '../../src/auth/auth.service';
 import type { AppDatabase } from '../../src/database/database';
@@ -70,7 +70,7 @@ before(async () => {
   });
   auth = app.get(AuthService);
   onboarding = app.get(OrganizationOnboardingService);
-  inspect = app.get<AppDatabase>(getDrizzleClientToken());
+  inspect = app.get<AppDatabase>(getDrizzleToken());
 
   const nowIso = new Date().toISOString();
   const rivalOrg = inspect

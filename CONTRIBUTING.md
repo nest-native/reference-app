@@ -27,9 +27,10 @@ The repo uses Node.js `>=20`.
   - `nest-trpc-native`: `TrpcModule.forRoot()`/`forRootAsync()`, `@Router()`,
     `@Query()`, `@Mutation()`, `@Subscription()`, `@Input()`,
     `@TrpcContext()`, the generated `AppRouter`.
-  - `nest-drizzle-native`: `DrizzleModule.forRoot()`/`forRootAsync()`/`forFeature()`,
-    `@InjectDrizzle()`, `@DrizzleRepository()`, `@Transactional()`,
-    `@InjectTransaction()`.
+  - `@nestjs/drizzle` (the official module): `DrizzleModule.forRoot()`/
+    `forRootAsync()`, `@InjectDrizzle()`, `getDrizzleToken()`; repositories
+    are plain `@Injectable()` providers. Transactions come from
+    `@nestjs-cls/transactional`: `@Transactional()`, `@InjectTransaction()`.
 - Do not reach for library internals.
 - Migrations are forward-only and reversible-by-replacement. No destructive
   in-place data changes in a single migration. Splitting is cheap; data loss

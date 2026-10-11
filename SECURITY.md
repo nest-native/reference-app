@@ -12,7 +12,7 @@ The current supported runtime targets are:
 - tRPC `11.x`
 - Drizzle ORM `0.45.x`
 
-The supported line for each of the nine `@nest-native/*` libraries lives in
+The supported line for each of the eight `@nest-native/*` libraries lives in
 the README's [Compatibility](README.md#compatibility) table — kept in one
 place, and checked against `package.json` in CI by `npm run docs:check`.
 

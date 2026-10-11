@@ -6,7 +6,7 @@ import { after, before, test } from 'node:test';
 import type { INestApplicationContext } from '@nestjs/common';
 import { ContextIdFactory, NestFactory } from '@nestjs/core';
 import { and, eq, inArray } from 'drizzle-orm';
-import { getDrizzleClientToken } from '@nest-native/drizzle';
+import { getDrizzleToken } from '@nestjs/drizzle';
 import { OutboxClaimer } from '@nest-native/messaging';
 import type { AppDatabase } from '../../src/database/database';
 import { activityEvents, outboxEvents, tasks } from '../../src/database/schema';
@@ -62,7 +62,7 @@ before(async () => {
   });
   claimer = app.get(OutboxClaimer);
   activity = app.get(ActivityService);
-  inspect = app.get<AppDatabase>(getDrizzleClientToken());
+  inspect = app.get<AppDatabase>(getDrizzleToken());
 
   // TasksService reads CURRENT_ORGANIZATION / CURRENT_USER (request-scoped), so
   // resolve it against a registered request that carries the seeded tenant —

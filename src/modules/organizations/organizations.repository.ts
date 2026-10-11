@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { eq } from 'drizzle-orm';
-import { DrizzleRepository, InjectDrizzle } from '@nest-native/drizzle';
+import { InjectDrizzle } from '@nestjs/drizzle';
 import type { AppDatabase } from '../../database/database';
 import {
   type Organization,
@@ -9,7 +9,6 @@ import {
 } from '../../database/schema';
 
 @Injectable()
-@DrizzleRepository()
 export class OrganizationsRepository {
   constructor(@InjectDrizzle() private readonly db: AppDatabase) {}
 

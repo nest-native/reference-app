@@ -6,7 +6,7 @@
     <title>nest-native reference app</title>
     <meta
       name="description"
-      content="Production-shaped reference application for the nest-native stack — all nine nest-native libraries composing under realistic backend pressure."
+      content="Production-shaped reference application for the nest-native stack — all eight nest-native libraries composing under realistic backend pressure, on the official @nestjs/drizzle."
     >
     <meta property="og:title" content="nest-native reference app">
     <meta
@@ -40,8 +40,10 @@
           <h1>The nest-native stack, end to end.</h1>
           <p class="hero-lede">
             A production-shaped multi-tenant work-tracking SaaS that puts
-            <a href="https://nest-native.dev/">all nine nest-native libraries</a>
-            under realistic backend pressure and composes them the way a real
+            <a href="https://nest-native.dev/">all eight nest-native libraries</a>
+            under realistic backend pressure, on the official
+            <a href="https://docs.nestjs.com/data/drizzle">@nestjs/drizzle</a>
+            module for persistence, and composes them the way a real
             product would: feature modules, multi-tenant auth context,
             cross-service transactions, reliable domain events over an event
             backbone, deferred and scheduled jobs, a documented event catalog,
@@ -89,7 +91,7 @@
         </div>
         <div class="principles">
           <p>
-            The reference app exists to demonstrate the nine libraries this
+            The reference app exists to demonstrate the eight libraries this
             organization publishes — not to become a product of its own. Two
             implicit deliverables:
           </p>
@@ -110,59 +112,53 @@
       <section id="libraries" class="section">
         <div class="section-heading">
           <p class="eyebrow">The roster</p>
-          <h2>Nine libraries, nine chapters.</h2>
+          <h2>Eight libraries, eight chapters.</h2>
         </div>
         <div class="milestones">
           <div class="milestone">
             <span class="milestone-num">01</span>
-            <span class="milestone-title"><a href="https://nest-native.dev/drizzle/">@nest-native/drizzle</a></span>
-            <span class="milestone-status">wired</span>
-            <span class="milestone-desc">Persistence — orgs, users, projects, tasks, activity. Repositories, transactions, multi-tenant scoping.</span>
-          </div>
-          <div class="milestone">
-            <span class="milestone-num">02</span>
             <span class="milestone-title"><a href="https://nest-native.dev/trpc/">@nest-native/trpc</a></span>
             <span class="milestone-status">wired</span>
             <span class="milestone-desc">The typed API — task CRUD, project queries, the activity feed, typesafe end to end into the client smoke check.</span>
           </div>
           <div class="milestone">
-            <span class="milestone-num">03</span>
+            <span class="milestone-num">02</span>
             <span class="milestone-title"><a href="https://nest-native.dev/messaging/">@nest-native/messaging</a></span>
             <span class="milestone-status">wired</span>
             <span class="milestone-desc">Reliable domain events — a transactional outbox (emit in-tx) plus an idempotent inbox (dedup on consume).</span>
           </div>
           <div class="milestone">
-            <span class="milestone-num">04</span>
+            <span class="milestone-num">03</span>
             <span class="milestone-title"><a href="https://nest-native.dev/kafka/">@nest-native/kafka</a></span>
             <span class="milestone-status">wired</span>
             <span class="milestone-desc">The event backbone — set KAFKA_BROKERS and the same domain code relays through KafkaOutboxTransport to a real cluster.</span>
           </div>
           <div class="milestone">
-            <span class="milestone-num">05</span>
+            <span class="milestone-num">04</span>
             <span class="milestone-title"><a href="https://nest-native.dev/jobs/">@nest-native/jobs</a></span>
             <span class="milestone-status">wired</span>
             <span class="milestone-desc">Deferred work — an assignment reminder enqueued in the same transaction as its projection, plus a DB-stored cron sweep. No Redis.</span>
           </div>
           <div class="milestone">
-            <span class="milestone-num">06</span>
+            <span class="milestone-num">05</span>
             <span class="milestone-title"><a href="https://nest-native.dev/asyncapi/">@nest-native/asyncapi</a></span>
             <span class="milestone-status">wired</span>
             <span class="milestone-desc">The event catalog — an AsyncAPI 3.0 document at /asyncapi so another team could subscribe to your streams.</span>
           </div>
           <div class="milestone">
-            <span class="milestone-num">07</span>
+            <span class="milestone-num">06</span>
             <span class="milestone-title"><a href="https://nest-native.dev/ai-sdk/">@nest-native/ai-sdk</a></span>
             <span class="milestone-status">wired</span>
             <span class="milestone-desc">AI over your data — a streaming assistant that turns a project's recent activity into a status update, token by token.</span>
           </div>
           <div class="milestone">
-            <span class="milestone-num">08</span>
+            <span class="milestone-num">07</span>
             <span class="milestone-title"><a href="https://nest-native.dev/cache/">@nest-native/cache</a></span>
             <span class="milestone-status">wired</span>
             <span class="milestone-desc">Read caching without Redis — expensive reads cached with tags; mutations evict by tag and TTL is only the backstop.</span>
           </div>
           <div class="milestone">
-            <span class="milestone-num">09</span>
+            <span class="milestone-num">08</span>
             <span class="milestone-title"><a href="https://nest-native.dev/lockout/">@nest-native/lockout</a></span>
             <span class="milestone-status">wired</span>
             <span class="milestone-desc">Brute-force defense — failed logins lock an identity by email or source IP before the credential is ever checked.</span>
@@ -192,7 +188,7 @@
             <span>v0.1.0 release</span><span>first tag ⟶</span>
           </a>
           <a href="https://nest-native.dev/">
-            <span>nest-native.dev</span><span>all nine library docs ⟶</span>
+            <span>nest-native.dev</span><span>every library’s docs ⟶</span>
           </a>
         </div>
       </section>

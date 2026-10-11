@@ -7,7 +7,7 @@ import { after, before, test } from 'node:test';
 import type { INestApplicationContext } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { eq } from 'drizzle-orm';
-import { getDrizzleClientToken } from '@nest-native/drizzle';
+import { getDrizzleToken } from '@nestjs/drizzle';
 import type { AppDatabase } from '../../src/database/database';
 import { outboxEvents } from '../../src/database/schema';
 import { OutboxClaimer, runWorkerLoop } from '@nest-native/messaging';
@@ -45,7 +45,7 @@ before(async () => {
   onboarding = app.get(OrganizationOnboardingService);
   claimer = app.get(OutboxClaimer);
   transport = app.get(FakeEmailTransport);
-  inspect = app.get<AppDatabase>(getDrizzleClientToken());
+  inspect = app.get<AppDatabase>(getDrizzleToken());
 });
 
 after(async () => {

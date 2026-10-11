@@ -2,7 +2,7 @@
   "name": "nest-native-reference-app",
   "version": "0.0.1",
   "private": true,
-  "description": "Production-shaped multi-tenant work-tracking SaaS showcasing all nine @nest-native libraries (drizzle, trpc, kafka, messaging, jobs, asyncapi, ai-sdk, cache, lockout)",
+  "description": "Production-shaped multi-tenant work-tracking SaaS showcasing all eight @nest-native libraries (trpc, kafka, messaging, jobs, asyncapi, ai-sdk, cache, lockout) on the official @nestjs/drizzle",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/nest-native/reference-app.git"
@@ -10,7 +10,7 @@
   "license": "MIT",
   "author": "Rodrigo Nogueira",
   "engines": {
-    "node": ">=22"
+    "node": ">=22.12"
   },
   "scripts": {
     "build": "rimraf dist && tsc -p tsconfig.build.json",
@@ -53,7 +53,6 @@
     "@nest-native/ai-sdk": "^0.6.0",
     "@nest-native/asyncapi": "^0.3.0",
     "@nest-native/cache": "^0.1.0",
-    "@nest-native/drizzle": "^0.5.1",
     "@nest-native/jobs": "^0.5.2",
     "@nest-native/kafka": "^0.6.0",
     "@nest-native/lockout": "^0.4.0",
@@ -63,6 +62,7 @@
     "@nestjs-cls/transactional-adapter-drizzle-orm": "^2.0.1",
     "@nestjs/common": "11.2.3",
     "@nestjs/core": "11.2.3",
+    "@nestjs/drizzle": "0.0.1",
     "@nestjs/platform-express": "11.2.3",
     "@stalefree/core": "^0.1.0",
     "@trpc/server": "11.19.0",

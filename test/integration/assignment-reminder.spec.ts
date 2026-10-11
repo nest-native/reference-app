@@ -6,7 +6,7 @@ import { after, before, test } from 'node:test';
 import type { INestApplicationContext } from '@nestjs/common';
 import { ContextIdFactory, NestFactory } from '@nestjs/core';
 import { and, eq } from 'drizzle-orm';
-import { getDrizzleClientToken } from '@nest-native/drizzle';
+import { getDrizzleToken } from '@nestjs/drizzle';
 import {
   OUTBOX_TRANSPORT,
   OutboxClaimer,
@@ -86,7 +86,7 @@ before(async () => {
   jobsClaimer = app.get(JobsClaimer);
   jobsService = app.get(JobsService);
   transport = app.get<OutboxTransport>(OUTBOX_TRANSPORT);
-  inspect = app.get<AppDatabase>(getDrizzleClientToken());
+  inspect = app.get<AppDatabase>(getDrizzleToken());
 
   const contextId = ContextIdFactory.create();
   app.registerRequestByContextId(

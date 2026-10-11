@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { desc, eq } from 'drizzle-orm';
-import { DrizzleRepository, InjectDrizzle } from '@nest-native/drizzle';
+import { InjectDrizzle } from '@nestjs/drizzle';
 import type { AppDatabase } from '../../database/database';
 import { type User, memberships, users } from '../../database/schema';
 
@@ -12,7 +12,6 @@ export interface OrgMember {
 }
 
 @Injectable()
-@DrizzleRepository()
 export class UsersRepository {
   constructor(@InjectDrizzle() private readonly db: AppDatabase) {}
 

@@ -6,7 +6,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { asc, eq } from 'drizzle-orm';
-import { InjectDrizzle } from '@nest-native/drizzle';
+import { InjectDrizzle } from '@nestjs/drizzle';
 import { LockoutService } from '@nest-native/lockout';
 import type { AppDatabase } from '../database/database';
 import { memberships, users } from '../database/schema';

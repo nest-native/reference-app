@@ -2,11 +2,11 @@
 
 <p>
   <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/license-MIT-green.svg" alt="License" /></a>
-  <img src="https://img.shields.io/badge/node-%3E%3D22-brightgreen.svg" alt="Node version" />
-  <img src="https://img.shields.io/badge/libraries-9%2F9-0f766e.svg" alt="All nine nest-native libraries" />
+  <img src="https://img.shields.io/badge/node-%3E%3D22.12-brightgreen.svg" alt="Node version" />
+  <img src="https://img.shields.io/badge/libraries-8%2F8-0f766e.svg" alt="All eight nest-native libraries" />
 </p>
 
-A production-shaped **multi-tenant work-tracking SaaS** — think a small Linear/Asana — that puts **all nine [nest-native](https://github.com/nest-native) libraries** under realistic backend pressure and composes them the way a real product would: persistence, a typed API, reliable domain events, an event backbone, deferred background jobs, a documented event catalog, a streaming AI assistant, brute-force login lockout, and tag-invalidated read caching.
+A production-shaped **multi-tenant work-tracking SaaS** — think a small Linear/Asana — that puts **all eight [nest-native](https://github.com/nest-native) libraries** under realistic backend pressure, on the official [`@nestjs/drizzle`](https://docs.nestjs.com/data/drizzle) module for persistence, and composes them the way a real product would: a typed API, reliable domain events, an event backbone, deferred background jobs, a documented event catalog, a streaming AI assistant, brute-force login lockout, and tag-invalidated read caching.
 
 It is not a product. It **serves the libraries** — a credible demo a team could adapt, and a feedback loop: if something feels awkward here, that's signal to add API in a separate PR to the relevant library (that's how, for example, `MessagingModule.forRoot`'s `imports` option and `KafkaInboxConsumer`'s `dedupKey` argument came to exist).
 
@@ -22,11 +22,10 @@ Follow one journey through the code and every library shows up where a real syst
 5. **The event contracts are published.** An **AsyncAPI 3.0 catalog** at `/asyncapi` documents every event so another team could subscribe to your streams.
 6. **AI reads the activity.** A streaming **project assistant** turns a project's recent activity into a status update, token by token.
 
-## Nine libraries, nine chapters
+## Eight libraries, eight chapters
 
 | Library | Its job in the story | Where in the code |
 | --- | --- | --- |
-| [`@nest-native/drizzle`](https://github.com/nest-native/drizzle) | **Persistence** — orgs, users, projects, tasks, activity; repositories, transactions, multi-tenant scoping | `src/database/`, every `*.repository.ts` (`@DrizzleRepository`, `@InjectTransaction`) |
 | [`@nest-native/trpc`](https://github.com/nest-native/trpc) | **The typed API** — task CRUD, project queries, the activity feed, all typesafe end-to-end; the superjson transformer keeps the feed's `Date`s real across the wire (the client link is *required* to match, at compile time), and failed validations reach the client as flattened Zod field errors (`error.data.zodError`); Nest enhancers compose over procedures the usual way — `@UseGuards(AuthGuard, RolesGuard)` plus per-procedure `@Roles(...)` metadata | `src/modules/*/**.router.ts` (`@Router`, `@Query`/`@Mutation`), `src/trpc/` (transformer, error formatting, response meta), generated `AppRouter` |
 | [`@nest-native/messaging`](https://github.com/nest-native/messaging) | **Reliable domain events** — the transactional outbox (emit in-tx) + idempotent inbox (dedup on consume) | `src/modules/{outbox,inbox,activity}/`, `OutboxProducer.enqueue` inside `@Transactional()` |
 | [`@nest-native/kafka`](https://github.com/nest-native/kafka) | **The event backbone** — the outbox relays through `KafkaOutboxTransport`; `@KafkaConsumer`s build read-models | the Kafka profile in `src/app.module.ts`, `src/modules/inbox/*.consumer.ts` |
@@ -36,7 +35,7 @@ Follow one journey through the code and every library shows up where a real syst
 | [`@nest-native/cache`](https://github.com/nest-native/cache) | **Read caching without Redis** — expensive reads (`projects.*`, `activity.list`) cached in an in-memory L1 with **tag-based invalidation**: mutations evict by tag (`project:42`), the activity projection invalidates its own feed at the write site, and every entry's TTL is only the backstop. Coherence travels through `@stalefree/core`'s bus seam (in-process by default; set `CACHE_SOCKET_PATH` for the app + worker split) | `src/cache/cache.setup.ts` (`CacheModule.forRootAsync`), `projects.router.ts` + `activity.router.ts` (`wrap` + tags), `activity.service.ts` (write-site invalidation) |
 | [`@nest-native/lockout`](https://github.com/nest-native/lockout) | **Brute-force defense** — failed logins lock an identity (by email OR source IP) *before* the credential is checked; a Drizzle-backed counter on the same SQLite DB, `Retry-After` on the lock, reset on success. tRPC has no HTTP body for the guard's extractor to read, so the login handler calls `LockoutService` directly — the library's documented non-HTTP-transport recipe | `src/auth/lockout.setup.ts` (`LockoutModule.forRootAsync`), `src/auth/auth.service.ts` (`check` → `reportFailure`/`reportSuccess`) |
 
-Underneath, [`@nestjs-cls/transactional`](https://www.npmjs.com/package/@nestjs-cls/transactional) (with the official Drizzle adapter) ties the outbox write to the business write — its `transactionMode: 'auto'` runs the same `@Transactional()` code against better-sqlite3's synchronous driver locally and an async driver in production.
+Underneath, the official [`@nestjs/drizzle`](https://docs.nestjs.com/data/drizzle) module registers the database (`src/database/`). Repositories are plain `@Injectable()` providers that take it with `@InjectDrizzle()`, or with `@InjectTransaction()` when they must join the caller's transaction, and every library reaches it through `getDrizzleToken()`. [`@nestjs-cls/transactional`](https://www.npmjs.com/package/@nestjs-cls/transactional) (with the official Drizzle adapter) ties the outbox write to the business write — its `transactionMode: 'auto'` runs the same `@Transactional()` code against better-sqlite3's synchronous driver locally and an async driver in production.
 
 ## Three profiles, one codebase
 
@@ -187,9 +186,8 @@ One row per library, in chapter order:
 
 | | Supported line |
 | --- | --- |
-| Node.js | `>=22` |
+| Node.js | `>=22.12` |
 | NestJS | `11.x` |
-| `@nest-native/drizzle` | `0.5.x` |
 | `@nest-native/trpc` | `0.7.x` |
 | `@nest-native/messaging` | `0.8.x` |
 | `@nest-native/kafka` | `0.6.x` |
@@ -198,6 +196,7 @@ One row per library, in chapter order:
 | `@nest-native/ai-sdk` | `0.6.x` (on `ai@7`) |
 | `@nest-native/cache` | `0.1.x` (on `@stalefree/core` `0.1.x`) |
 | `@nest-native/lockout` | `0.4.x` (on `@authlock/core` `0.4.x`) |
+| `@nestjs/drizzle` | `0.0.x` (the official module) |
 | `drizzle-orm` | `0.45.x` (with `@nestjs-cls/transactional` `^4` and the official Drizzle adapter) |
 
 Every version in that table is checked against `package.json` by
@@ -208,7 +207,7 @@ the docs site still counts the old roster.
 The NestJS row is the lockfile's 11.x on purpose. Every library above publishes
 `^11 || ^12` and tests both ends of that range in its own CI (an `11 floor`
 leg pinned to the oldest installable 11, and a `12` leg); this app is the one
-place the nine compose, and it tracks the lockfile's 11 until the libraries'
+place the eight compose, and it tracks the lockfile's 11 until the libraries'
 shared flip trigger fires — NestJS 12 above 50% of `@nestjs/core` weekly
 downloads, or NestJS 11 no longer receiving patches — at which point the
 grouped `@nestjs/*` Dependabot PR is merged here as well.

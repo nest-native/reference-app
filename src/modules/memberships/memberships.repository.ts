@@ -1,7 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectTransaction } from '@nestjs-cls/transactional';
 import { and, eq } from 'drizzle-orm';
-import { DrizzleRepository } from '@nest-native/drizzle';
 import type { AppDatabase } from '../../database/database';
 import {
   type Membership,
@@ -16,7 +15,6 @@ export interface CreateMembershipInput {
 }
 
 @Injectable()
-@DrizzleRepository()
 export class MembershipsRepository {
   constructor(@InjectTransaction() private readonly db: AppDatabase) {}
 
