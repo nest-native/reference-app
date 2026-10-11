@@ -6,7 +6,7 @@ import { after, before, test } from 'node:test';
 import type { INestApplicationContext } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { eq } from 'drizzle-orm';
-import { getDrizzleClientToken } from '@nest-native/drizzle';
+import { getDrizzleToken } from '@nestjs/drizzle';
 import type { AppDatabase } from '../../src/database/database';
 import {
   auditEvents,
@@ -62,7 +62,7 @@ before(async () => {
   projectsRepo = app.get(ProjectsRepository);
   claimer = app.get(OutboxClaimer);
   transport = app.get(FakeEmailTransport);
-  inspect = app.get<AppDatabase>(getDrizzleClientToken());
+  inspect = app.get<AppDatabase>(getDrizzleToken());
 });
 
 after(async () => {
@@ -121,9 +121,9 @@ test('rollback safety: throw between steps 3 and 4 leaves no rows from this tran
   const before = countAll();
 
   // Override on the exact instance that OrganizationOnboardingService holds
-  // — each DrizzleModule.forFeature([...]) creates its own provider, so
-  // app.get(ProjectsRepository) may return a different instance than
-  // onboarding's injected dep.
+  // — each module that lists ProjectsRepository in its providers gets its own
+  // instance, so app.get(ProjectsRepository) may return a different instance
+  // than onboarding's injected dep.
   const injected = (onboarding as unknown as { projects: ProjectsRepository })
     .projects;
   const originalCreate = injected.create.bind(injected);

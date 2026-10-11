@@ -109,7 +109,7 @@ before(async () => {
   drizzleOps = await import('drizzle-orm');
   const { Module } = await import('@nestjs/common');
   const { NestFactory } = await import('@nestjs/core');
-  const { getDrizzleClientToken } = await import('@nest-native/drizzle');
+  const { getDrizzleToken } = await import('@nestjs/drizzle');
   const { DatabaseModule } = await import('../../src/database/database.module');
   const { AuditLogModule } = await import(
     '../../src/modules/audit-log/audit-log.module'
@@ -133,7 +133,7 @@ before(async () => {
           new ClsPluginTransactional({
             imports: [DatabaseModule],
             adapter: new TransactionalAdapterDrizzleOrm({
-              drizzleInstanceToken: getDrizzleClientToken(),
+              drizzleInstanceToken: getDrizzleToken(),
             }),
             enableTransactionProxy: true,
           }),
@@ -162,7 +162,7 @@ before(async () => {
   });
   await app.init();
   broker = app.get(kafka.KAFKA_TEST_BROKER);
-  inspect = app.get(getDrizzleClientToken());
+  inspect = app.get(getDrizzleToken());
 });
 
 after(async () => {

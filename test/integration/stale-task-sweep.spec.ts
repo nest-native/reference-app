@@ -6,7 +6,7 @@ import { after, before, test } from 'node:test';
 import type { INestApplicationContext } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { and, eq } from 'drizzle-orm';
-import { getDrizzleClientToken } from '@nest-native/drizzle';
+import { getDrizzleToken } from '@nestjs/drizzle';
 import { JobSchedulesService, JobsClaimer } from '@nest-native/jobs';
 import type { SqliteScheduleStore } from '@nest-native/jobs/sqlite';
 import type { AppDatabase } from '../../src/database/database';
@@ -94,7 +94,7 @@ before(async () => {
   await app.init();
   claimer = app.get(JobsClaimer);
   schedules = app.get(JobSchedulesService);
-  db = app.get<AppDatabase>(getDrizzleClientToken());
+  db = app.get<AppDatabase>(getDrizzleToken());
 
   const old = new Date(
     Date.now() - (STALE_TASK_AFTER_DAYS + 1) * 24 * 60 * 60 * 1000,

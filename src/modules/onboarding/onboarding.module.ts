@@ -1,5 +1,4 @@
 import { Module } from '@nestjs/common';
-import { DrizzleModule } from '@nest-native/drizzle';
 import { DatabaseModule } from '../../database/database.module';
 import { AuditLogModule } from '../audit-log/audit-log.module';
 import { MembershipsModule } from '../memberships/memberships.module';
@@ -18,10 +17,9 @@ import { OrganizationOnboardingService } from './organization-onboarding.service
   imports: [
     DatabaseModule,
     MembershipsModule,
-    DrizzleModule.forFeature([ProjectsRepository]),
     AuditLogModule,
   ],
-  providers: [OrganizationOnboardingService],
+  providers: [ProjectsRepository, OrganizationOnboardingService],
   exports: [OrganizationOnboardingService],
 })
 export class OnboardingModule {}

@@ -6,7 +6,7 @@ import { after, before, test } from 'node:test';
 import type { INestApplication } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { and, eq } from 'drizzle-orm';
-import { getDrizzleClientToken } from '@nest-native/drizzle';
+import { getDrizzleToken } from '@nestjs/drizzle';
 import superjson from 'superjson';
 import type { SuperJSONResult } from 'superjson';
 import type { AppDatabase } from '../../src/database/database';
@@ -93,7 +93,7 @@ before(async () => {
   app = await NestFactory.create(AppModule, { logger: false });
   await app.listen(0, '127.0.0.1');
   baseUrl = await app.getUrl();
-  inspect = app.get<AppDatabase>(getDrizzleClientToken());
+  inspect = app.get<AppDatabase>(getDrizzleToken());
 
   adminToken = await login('admin@acme.test', 'admin123!');
 

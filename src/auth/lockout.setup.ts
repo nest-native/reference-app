@@ -1,6 +1,6 @@
 import { Logger, Module } from '@nestjs/common';
 import { SqliteLockoutStore } from '@authlock/core/sqlite';
-import { getDrizzleClientToken } from '@nest-native/drizzle';
+import { getDrizzleToken } from '@nestjs/drizzle';
 import { LockoutModule } from '@nest-native/lockout';
 import { loadEnv } from '../config/env';
 import type { AppDatabase } from '../database/database';
@@ -18,9 +18,9 @@ import { lockoutAttempts } from '../database/schema';
 @Module({
   imports: [
     LockoutModule.forRootAsync({
-      // The drizzle client token is global (see DatabaseModule), so the store
+      // The drizzle database token is global (see DatabaseModule), so the store
       // factory resolves the base Drizzle instance directly.
-      inject: [getDrizzleClientToken()],
+      inject: [getDrizzleToken()],
       useFactory: (db: AppDatabase) => {
         const env = loadEnv();
         const logger = new Logger('Lockout');

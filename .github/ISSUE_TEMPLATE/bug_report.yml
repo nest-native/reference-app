@@ -11,7 +11,7 @@ body:
 
         If this is security-sensitive, do not include exploit details here. See `SECURITY.md` first.
 
-        If the issue is in one of the nine `@nest-native/*` libraries themselves, please file it on that library's repo instead.
+        If the issue is in one of the eight `@nest-native/*` libraries themselves, please file it on that library's repo instead.
   - type: input
     id: commit
     attributes:

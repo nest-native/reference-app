@@ -1,5 +1,4 @@
 import { Module } from '@nestjs/common';
-import { DrizzleModule } from '@nest-native/drizzle';
 import { AuthModule } from '../../auth/auth.module';
 import { RequestContextModule } from '../../context/request-context.module';
 import { ProjectsRepository } from '../projects/projects.repository';
@@ -14,11 +13,10 @@ import { TasksService } from './tasks.service';
 // other — MembershipsRepository, for the assignee — arrives with AuthModule.
 @Module({
   imports: [
-    DrizzleModule.forFeature([TasksRepository, ProjectsRepository]),
     AuthModule,
     RequestContextModule,
   ],
-  providers: [TasksService, TasksRouter],
+  providers: [TasksRepository, ProjectsRepository, TasksService, TasksRouter],
   exports: [TasksService],
 })
 export class TasksModule {}

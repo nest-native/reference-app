@@ -66,7 +66,7 @@ before(async () => {
   topology = await import('../../src/modules/rabbitmq/rabbitmq.topology');
   drizzleOps = await import('drizzle-orm');
   const { ContextIdFactory, NestFactory } = await import('@nestjs/core');
-  const { getDrizzleClientToken } = await import('@nest-native/drizzle');
+  const { getDrizzleToken } = await import('@nestjs/drizzle');
   const { OutboxClaimer } = await import('@nest-native/messaging');
   const { loadEnv } = await import('../../src/config/env');
   const { InboxDeliveries } = await import(
@@ -105,7 +105,7 @@ before(async () => {
   onboarding = app.get(OrganizationOnboardingService);
   claimer = app.get(OutboxClaimer);
   deliveries = app.get(InboxDeliveries);
-  inspect = app.get(getDrizzleClientToken());
+  inspect = app.get(getDrizzleToken());
   exchange = loadEnv().rabbitmq!.exchange;
 
   const contextId = ContextIdFactory.create();

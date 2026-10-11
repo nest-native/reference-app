@@ -2,7 +2,7 @@ import { type ModuleMetadata, Module } from '@nestjs/common';
 import { ClsPluginTransactional } from '@nestjs-cls/transactional';
 import { TransactionalAdapterDrizzleOrm } from '@nestjs-cls/transactional-adapter-drizzle-orm';
 import { ClsModule } from 'nestjs-cls';
-import { getDrizzleClientToken } from '@nest-native/drizzle';
+import { getDrizzleToken } from '@nestjs/drizzle';
 import { JobsModule } from '@nest-native/jobs';
 import { SqliteJobStore, SqliteScheduleStore } from '@nest-native/jobs/sqlite';
 import { KafkaModule, KafkaProducerService } from '@nest-native/kafka';
@@ -50,10 +50,10 @@ import { AppCacheModule } from './cache/cache.setup';
 // UserInvitedConsumer subscribes. RABBITMQ_URL is the third profile, and the
 // same shape: the claimer publishes through the library's RabbitMQ transport and
 // the RabbitMQ consumers run the same read-sides. The two broker profiles are
-// mutually exclusive (loadEnv refuses both). The drizzle client token is
-// global, so the engine resolves the base Drizzle instance from it directly.
+// mutually exclusive (loadEnv refuses both). @nestjs/drizzle registers the
+// database globally, so the engine resolves it from `getDrizzleToken()` directly.
 const { kafka: kafkaEnv, rabbitmq: rabbitmqEnv } = loadEnv();
-const drizzleInstanceToken = getDrizzleClientToken();
+const drizzleInstanceToken = getDrizzleToken();
 
 function messagingImports(): NonNullable<ModuleMetadata['imports']> {
   if (rabbitmqEnv?.enabled) {
@@ -156,7 +156,7 @@ function rabbitmqMessagingImports(
           // transaction callback in sync mode, so the @Transactional()
           // methods in this app stay synchronous.
           adapter: new TransactionalAdapterDrizzleOrm({
-            drizzleInstanceToken: getDrizzleClientToken(),
+            drizzleInstanceToken: getDrizzleToken(),
           }),
           enableTransactionProxy: true,
         }),
@@ -166,7 +166,7 @@ function rabbitmqMessagingImports(
     RequestContextModule,
     AuditLogModule,
     // Deferred work runs on the same wiring under BOTH messaging profiles: the
-    // jobs engine resolves the global drizzle client token directly, enqueue
+    // jobs engine resolves the global drizzle database token directly, enqueue
     // joins whatever CLS transaction is open, and the claimer runs in the
     // background worker (scripts/start-worker.ts).
     JobsModule.forRoot({

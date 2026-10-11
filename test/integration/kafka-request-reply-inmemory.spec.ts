@@ -51,7 +51,7 @@ before(async () => {
   schema = await import('../../src/database/schema');
   const { Module } = await import('@nestjs/common');
   const { NestFactory } = await import('@nestjs/core');
-  const { getDrizzleClientToken } = await import('@nest-native/drizzle');
+  const { getDrizzleToken } = await import('@nestjs/drizzle');
   const { DatabaseModule } = await import('../../src/database/database.module');
   const { TaskSummaryClient } = await import(
     '../../src/modules/task-summary/task-summary.client'
@@ -72,7 +72,7 @@ before(async () => {
           new ClsPluginTransactional({
             imports: [DatabaseModule],
             adapter: new TransactionalAdapterDrizzleOrm({
-              drizzleInstanceToken: getDrizzleClientToken(),
+              drizzleInstanceToken: getDrizzleToken(),
             }),
             enableTransactionProxy: true,
           }),
@@ -94,7 +94,7 @@ before(async () => {
   });
   await app.init();
   client = app.get(TaskSummaryClient);
-  inspect = app.get(getDrizzleClientToken());
+  inspect = app.get(getDrizzleToken());
 
   // A second org whose tasks must never appear in the first org's summary.
   const otherOrg = inspect

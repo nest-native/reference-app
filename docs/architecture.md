@@ -7,9 +7,8 @@ description: One-sitting tour of the nest-native reference app — module graph,
 # Architecture
 
 This is a single-process Nest application (plus one background worker
-process). It exists to demonstrate how all nine
+process). It exists to demonstrate how all eight
 [nest-native](https://github.com/nest-native) libraries —
-[`drizzle`](https://github.com/nest-native/drizzle),
 [`trpc`](https://github.com/nest-native/trpc),
 [`messaging`](https://github.com/nest-native/messaging),
 [`kafka`](https://github.com/nest-native/kafka),
@@ -18,7 +17,8 @@ process). It exists to demonstrate how all nine
 [`ai-sdk`](https://github.com/nest-native/ai-sdk),
 [`cache`](https://github.com/nest-native/cache), and
 [`lockout`](https://github.com/nest-native/lockout) —
-compose under realistic backend pressure: feature modules, multi-tenant
+compose on the official [`@nestjs/drizzle`](https://docs.nestjs.com/data/drizzle)
+module under realistic backend pressure: feature modules, multi-tenant
 context, cross-service transactions, post-commit side effects via a
 transactional outbox, deferred and scheduled work, a published event
 catalog, and a typed tRPC client.
@@ -133,7 +133,9 @@ Each library is wired **exactly once**, via its primary `forRoot` /
 chapter:
 
 - [`src/database/database.module.ts`](https://github.com/nest-native/reference-app/blob/main/src/database/database.module.ts) →
-  `DrizzleModule.forRoot({ schema, connection, shutdown })`.
+  `DrizzleModule.forRoot({ db })` from the official `@nestjs/drizzle`, which
+  registers the database globally under `getDrizzleToken()` and closes its
+  client on shutdown.
 - [`src/trpc/trpc.module.ts`](https://github.com/nest-native/reference-app/blob/main/src/trpc/trpc.module.ts) →
   `TrpcModule.forRoot<AppTrpcContext>({ path, autoSchemaFile,
   createContext })`.
@@ -158,8 +160,8 @@ chapter:
 - [`src/auth/lockout.setup.ts`](https://github.com/nest-native/reference-app/blob/main/src/auth/lockout.setup.ts) →
   `LockoutModule.forRootAsync({ … })` (see [Login lockout](#login-lockout)).
 
-Feature modules declare their repositories via
-`DrizzleModule.forFeature([…])` and their routers as providers. Routers are
+Feature modules list their repositories and routers as providers.
+Repositories are plain `@Injectable()` classes. Routers are
 ordinary `@Injectable()` classes (the `@Router('alias')` decorator from
 `@nest-native/trpc` applies `@Injectable()` automatically) — they accept
 service deps through `@Inject(...)` in the constructor and call them.
@@ -278,11 +280,9 @@ deliberately not cached, because a stale allow is exactly the failure being
 prevented. `auth.me` is the exception — it only echoes the token back.
 
 Because the guard's dependency has to travel with the guard, the single
-`DrizzleModule.forFeature([MembershipsRepository])` registration lives in
+registration of `MembershipsRepository` lives in
 [`MembershipsModule`](https://github.com/nest-native/reference-app/blob/main/src/modules/memberships/memberships.module.ts),
-which `AuthModule` imports **and re-exports**. (`forFeature()` returns a new
-dynamic module object per call and Nest keys modules by identity, so that one
-call is hoisted into a constant and reused by `imports` and `exports`.)
+which `AuthModule` imports **and re-exports**.
 
 Tenancy is proven at the write, not assumed from the token. Inside the same
 transaction that writes the row, `TasksService.createTask` requires the
@@ -451,7 +451,7 @@ same image (see `docker-compose.yml`).
 | `modules/organizations/` | Repo + service + tRPC router. `organizations.current` / `.list` |
 | `modules/users/` | Repo + service + tRPC router. `users.me` / `.list` / `.invite` |
 | `modules/projects/` | Repo + service + tRPC router. `projects.list` / `.get` / `.create` |
-| `modules/memberships/` | Repo + the one `forFeature` registration of it, re-exported through `AuthModule` (consumed by onboarding, `RolesGuard`, and the task tenancy checks) |
+| `modules/memberships/` | Repo + the one registration of it, re-exported through `AuthModule` (consumed by onboarding, `RolesGuard`, and the task tenancy checks) |
 | `modules/audit-log/` | `AuditLogService.record()` |
 | `modules/outbox/` | Producer, claimer, registry, fake transport, `user.invited` handler, `outbox.constants.ts` |
 | `modules/onboarding/` | `OrganizationOnboardingService` — the `@Transactional` workflow |
@@ -492,10 +492,23 @@ production deployment on Postgres:
    [`src/database/database.ts`](https://github.com/nest-native/reference-app/blob/main/src/database/database.ts).
 2. Swap `pragma('journal_mode = WAL')` etc. for the Postgres equivalents
    (typically nothing — set search_path if needed).
-3. Replace `SyncDrizzleTransactionalAdapter` with the official
-   `TransactionalAdapterDrizzleOrm` from
-   `@nestjs-cls/transactional-adapter-drizzle-orm`. Postgres is async, so
-   the original async-callback shape works.
+3. Give every client the pool opens an `error` listener, and the pool one
+   of its own. drizzle-orm's node-postgres `transaction()` checks a client
+   out without one (pg-pool drops its idle listener at checkout), so a
+   connection the server drops mid-transaction (a failover, a restart,
+   `pg_terminate_backend`) ends the process
+   ([drizzle-orm#6437](https://github.com/drizzle-team/drizzle-orm/issues/6437)):
+
+   ```ts
+   pool.on('error', (error) => logger.warn(`idle client lost: ${error.message}`));
+   // 'connect' fires once per new client, before its first checkout.
+   pool.on('connect', (client) => {
+     client.on('error', (error) => logger.warn(`client lost: ${error.message}`));
+   });
+   ```
+
+   The transactional adapter needs no change: `TransactionalAdapterDrizzleOrm`
+   detects the async driver on its own (`transactionMode: 'auto'`).
 4. Update the partial unique index on `outbox_events.idempotency_key` if
    the drizzle-kit output for Postgres differs (it usually doesn't for
    this shape).

@@ -31,9 +31,10 @@
 - [ ] Only primary onboarding APIs of `@nest-native/trpc` used
       (`TrpcModule`, `@Router`, `@Query`, `@Mutation`, `@Subscription`,
       `@Input`, `@TrpcContext`, generated `AppRouter`)
-- [ ] Only primary onboarding APIs of `@nest-native/drizzle` used
-      (`DrizzleModule.{forRoot,forRootAsync,forFeature}`, `@InjectDrizzle`,
-      `@DrizzleRepository`, `@Transactional`, `@InjectTransaction`)
+- [ ] Only primary onboarding APIs of `@nestjs/drizzle` used
+      (`DrizzleModule.{forRoot,forRootAsync}`, `@InjectDrizzle`,
+      `getDrizzleToken`), with transactions from `@nestjs-cls/transactional`
+      (`@Transactional`, `@InjectTransaction`)
 - [ ] Only primary onboarding APIs (`*.forRoot()` / `forRootAsync()` and the
       public decorators) of the other libraries used — messaging, kafka, jobs,
       asyncapi, ai-sdk, cache, lockout

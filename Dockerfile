@@ -17,7 +17,7 @@
 #
 # See docker-compose.yml for a full API + worker stack.
 
-ARG NODE_VERSION=20
+ARG NODE_VERSION=22
 
 # -------- stage 1: builder --------
 FROM node:${NODE_VERSION}-bookworm-slim AS builder

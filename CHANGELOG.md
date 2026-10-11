@@ -6,6 +6,35 @@ added them.
 
 ## [Unreleased]
 
+### Changed — persistence moves to the official `@nestjs/drizzle`
+
+- NestJS shipped its own Drizzle module, `@nestjs/drizzle` (0.0.1,
+  2026-09-23), and it covers what this app used `@nest-native/drizzle` for.
+  The app now runs on it, so the roster is eight nest-native libraries:
+  - `DatabaseModule` registers the database with `DrizzleModule.forRoot({ db })`.
+    The module closes the better-sqlite3 client on shutdown itself, replacing
+    the old `shutdown` callback.
+  - `getDrizzleClientToken()` becomes `getDrizzleToken()`. It is the token
+    messaging, jobs, lockout and cache are given as `drizzleInstanceToken`, and
+    all four run on it unchanged.
+  - Repositories lose `@DrizzleRepository()` and are listed in their module's
+    `providers`; `DrizzleModule.forFeature([...])` is gone. `@InjectDrizzle()`
+    keeps its name. Transactions were already `@nestjs-cls/transactional`'s.
+- Node `>=22.12`. `@nestjs/drizzle` is ESM-only, and this CommonJS app loads it
+  through `require(esm)`, unflagged from 22.12.0. The Dockerfile's default
+  `NODE_VERSION` moves from 20 to 22. It was already wrong: better-sqlite3 13
+  requires Node 22.
+- The Postgres recipe in `docs/architecture.md` now gives every pool client an
+  `error` listener. drizzle-orm's node-postgres `transaction()` checks a client
+  out without one, so a connection dropped mid-transaction ends the process
+  (drizzle-orm#6437). `@nest-native/drizzle` 0.5.1 added that listener itself;
+  the official module does not. The recipe's stale step about a
+  `SyncDrizzleTransactionalAdapter` is gone, since that adapter was removed
+  long ago.
+- `proxy-addr` 2.0.8 (through Express) fixes GHSA-jqcg-44mw-7w3h (critical:
+  IP spoofing through an IPv4-mapped IPv6 trusted subnet), published
+  2026-10-05.
+
 ### Changed — messaging 0.8.3 and jobs 0.5.2: the worker's claims wait for the API
 
 - `@nest-native/messaging` `^0.8.3` and `@nest-native/jobs` `^0.5.2`: the

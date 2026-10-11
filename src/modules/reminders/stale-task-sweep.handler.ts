@@ -2,7 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { type JobContext, JobHandler } from '@nest-native/jobs';
 import { and, eq, lt } from 'drizzle-orm';
 import type { AppDatabase } from '../../database/database';
-import { getDrizzleClientToken } from '@nest-native/drizzle';
+import { getDrizzleToken } from '@nestjs/drizzle';
 import { tasks } from '../../database/schema';
 import { AuditLogService } from '../audit-log/audit-log.service';
 import {
@@ -35,7 +35,7 @@ import {
 @Injectable()
 export class StaleTaskSweepHandler implements JobHandler {
   constructor(
-    @Inject(getDrizzleClientToken()) private readonly db: AppDatabase,
+    @Inject(getDrizzleToken()) private readonly db: AppDatabase,
     @Inject(AuditLogService) private readonly audit: AuditLogService,
   ) {}
 

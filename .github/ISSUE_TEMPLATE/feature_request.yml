@@ -7,7 +7,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Feature requests should serve the nine `@nest-native/*` libraries this repo demonstrates (drizzle, trpc, messaging, kafka, jobs, asyncapi, ai-sdk, cache, lockout), not turn the reference app into a product.
+        Feature requests should serve the eight `@nest-native/*` libraries this repo demonstrates (trpc, messaging, kafka, jobs, asyncapi, ai-sdk, cache, lockout), not turn the reference app into a product.
 
         If the feature is really a library improvement, please file it on the library repo instead.
   - type: textarea
@@ -49,7 +49,7 @@ body:
           required: true
         - label: This does not reach for library internals (any `@nest-native/*` package).
           required: true
-        - label: This exercises one of the nine libraries this repo exists to demonstrate (it is not a generic NestJS feature).
+        - label: This exercises one of the eight libraries this repo exists to demonstrate (it is not a generic NestJS feature).
           required: true
   - type: textarea
     id: alternatives

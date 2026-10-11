@@ -6,7 +6,7 @@ import { after, before, test } from 'node:test';
 import type { INestApplicationContext } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { and, eq } from 'drizzle-orm';
-import { getDrizzleClientToken } from '@nest-native/drizzle';
+import { getDrizzleToken } from '@nestjs/drizzle';
 import type { AppDatabase } from '../../src/database/database';
 import { auditEvents, inboxEvents } from '../../src/database/schema';
 import { InboxService } from '@nest-native/messaging';
@@ -84,7 +84,7 @@ before(async () => {
   });
   inbox = app.get(InboxService);
   audit = app.get(AuditLogService);
-  inspect = app.get<AppDatabase>(getDrizzleClientToken());
+  inspect = app.get<AppDatabase>(getDrizzleToken());
 });
 
 after(async () => {

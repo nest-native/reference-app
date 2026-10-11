@@ -92,7 +92,7 @@ before(async () => {
   schema = await import('../../src/database/schema');
   drizzleOps = await import('drizzle-orm');
   const { NestFactory } = await import('@nestjs/core');
-  const { getDrizzleClientToken } = await import('@nest-native/drizzle');
+  const { getDrizzleToken } = await import('@nestjs/drizzle');
   const { KafkaProducerService } = await import('@nest-native/kafka');
   const { OrganizationOnboardingService } = await import(
     '../../src/modules/onboarding/organization-onboarding.service'
@@ -112,7 +112,7 @@ before(async () => {
   onboarding = app.get(OrganizationOnboardingService);
   claimer = app.get(OutboxClaimer);
   producer = app.get(KafkaProducerService);
-  inspect = app.get(getDrizzleClientToken());
+  inspect = app.get(getDrizzleToken());
 });
 
 after(async () => {
