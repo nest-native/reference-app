@@ -77,7 +77,7 @@
     "zod": "4.6.5"
   },
   "optionalDependencies": {
-    "@ai-sdk/openai": "^4.0.83",
+    "@ai-sdk/openai": "^4.0.93",
     "@confluentinc/kafka-javascript": "^1.11.0"
   },
   "devDependencies": {
