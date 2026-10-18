@@ -17,9 +17,18 @@ const TaskSchema = z.object({
   createdAt: z.string(),
 });
 
+// The title rides in the task.created payload, and Outbox.add() refuses a
+// payload string that holds U+0000 or a lone UTF-16 surrogate (no database
+// stores them): refused here, the client gets a 400 rather than a 500.
+const STORABLE_TEXT = /^[^\u0000\p{Cs}]*$/u;
+
 const CreateTaskInputSchema = z.object({
   projectId: z.number().int().positive(),
-  title: z.string().min(1).max(200),
+  title: z
+    .string()
+    .min(1)
+    .max(200)
+    .regex(STORABLE_TEXT, 'must not contain U+0000 or a lone UTF-16 surrogate'),
 });
 
 const AssignTaskInputSchema = z.object({

@@ -194,6 +194,23 @@ test('successful tenant-scoped queries are never publicly cacheable', async () =
   assert.equal(r.headers.get('cache-control'), null);
 });
 
+test('tasks.create refuses a title no database can store with httpStatus 400', async () => {
+  const [project] = await get<{ id: number }[]>('projects.list');
+  // The title goes into the task.created payload, which Outbox.add() would
+  // refuse inside the transaction: a 500, before the router checked it.
+  for (const title of ['holds \u0000 a NUL', 'holds \ud800 a lone surrogate']) {
+    assert.equal(
+      await mutationStatus('tasks.create', { projectId: project?.id, title }),
+      400,
+      JSON.stringify(title),
+    );
+  }
+  const titles = (
+    await getWithInput<{ title: string }[]>('tasks.list', { projectId: project?.id })
+  ).map((task) => task.title);
+  assert.ok(!titles.some((title) => title.startsWith('holds')), 'no task was created');
+});
+
 test('a task transition that changes nothing answers httpStatus 409', async () => {
   const [project] = await get<{ id: number }[]>('projects.list');
   const me = await get<{ id: number }>('users.me');
