@@ -21,7 +21,7 @@ import {
  * How one task lifecycle event reaches the activity feed: the payload guard
  * (a failure dead-letters the message) and the projection write, which runs
  * exactly once inside the inbox's dedup transaction — synchronous and
- * DB-only, as the SQLite store requires. `apply` is a method, not a function
+ * DB-only, as a better-sqlite3 transaction requires. `apply` is a method, not a function
  * property, so a projection of one payload type can sit in a map of any.
  */
 export interface TaskActivityProjection<T> {
@@ -30,10 +30,10 @@ export interface TaskActivityProjection<T> {
 }
 
 /**
- * The task lifecycle projections the broker profiles share. The Kafka consumer
- * binds one handler per topic to them; the RabbitMQ consumer receives all three
- * topics on one queue and picks the projection by routing key. Either way the
- * feed is written by the same code.
+ * The task lifecycle projections every profile shares. The in-process handler
+ * and the RabbitMQ consumer pick the projection by topic (RabbitMQ delivers all
+ * three topics on one queue, routed by key); the Kafka consumer binds one
+ * handler per topic. Either way the feed is written by the same code.
  */
 @Injectable()
 export class TaskActivityProjections {

@@ -5,17 +5,18 @@ import { join } from 'node:path';
 import { after, before, test } from 'node:test';
 import type { INestApplicationContext } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { getDrizzleToken } from '@nestjs/drizzle';
+import { OutboxRelay } from '@nestjs/outbox';
 import type { AppDatabase } from '../../src/database/database';
 import {
   auditEvents,
   memberships,
-  outboxEvents,
+  outboxInbox,
+  outboxMessages,
   projects,
   users,
 } from '../../src/database/schema';
-import { OutboxClaimer } from '@nest-native/messaging';
 import { FakeEmailTransport } from '../../src/modules/outbox/fake-email-transport.service';
 import { OrganizationOnboardingService } from '../../src/modules/onboarding/organization-onboarding.service';
 import { ProjectsRepository } from '../../src/modules/projects/projects.repository';
@@ -29,7 +30,7 @@ const dbPath = join(
 let app: INestApplicationContext;
 let onboarding: OrganizationOnboardingService;
 let projectsRepo: ProjectsRepository;
-let claimer: OutboxClaimer;
+let relay: OutboxRelay;
 let transport: FakeEmailTransport;
 let inspect: AppDatabase;
 let seededOrgId: number;
@@ -40,8 +41,11 @@ const countAll = () => ({
   memberships: inspect.select().from(memberships).all().length,
   projects: inspect.select().from(projects).all().length,
   auditEvents: inspect.select().from(auditEvents).all().length,
-  outboxEvents: inspect.select().from(outboxEvents).all().length,
+  outboxMessages: inspect.select().from(outboxMessages).all().length,
 });
+
+const messageRow = (id: string) =>
+  inspect.select().from(outboxMessages).where(eq(outboxMessages.id, id)).get();
 
 before(async () => {
   process.env.DATABASE_URL = dbPath;
@@ -60,7 +64,7 @@ before(async () => {
   });
   onboarding = app.get(OrganizationOnboardingService);
   projectsRepo = app.get(ProjectsRepository);
-  claimer = app.get(OutboxClaimer);
+  relay = app.get(OutboxRelay);
   transport = app.get(FakeEmailTransport);
   inspect = app.get<AppDatabase>(getDrizzleToken());
 });
@@ -69,7 +73,7 @@ after(async () => {
   await app.close();
 });
 
-test('happy path: inviteUser persists 5 rows; worker delivers email; idempotency_key set', async () => {
+test('happy path: inviteUser persists 5 rows; the relay delivers the email once; idempotency key set', async () => {
   transport.reset();
   const before = countAll();
 
@@ -87,29 +91,31 @@ test('happy path: inviteUser persists 5 rows; worker delivers email; idempotency
   assert.equal(after.memberships, before.memberships + 1);
   assert.equal(after.projects, before.projects + 1);
   assert.equal(after.auditEvents, before.auditEvents + 1);
-  assert.equal(after.outboxEvents, before.outboxEvents + 1);
+  assert.equal(after.outboxMessages, before.outboxMessages + 1);
 
-  const outbox = inspect
-    .select()
-    .from(outboxEvents)
-    .where(eq(outboxEvents.id, result.outboxEventId))
-    .get();
-  assert.ok(outbox);
-  assert.equal(outbox.status, 'pending');
-  assert.equal(outbox.topic, 'user.invited');
-  assert.ok(outbox.idempotencyKey?.startsWith('user.invited:'));
+  const message = messageRow(result.outboxEventId);
+  assert.ok(message);
+  assert.equal(message.topic, 'user.invited');
+  assert.equal(message.leaseOwner, null, 'not claimed yet');
+  const headers = JSON.parse(message.headers) as Record<string, string>;
+  assert.ok(headers['x-idempotency-key']?.startsWith('user.invited:'));
 
-  const report = await claimer.tick();
+  const report = await relay.runOnce();
   assert.equal(report.claimed, 1);
-  assert.equal(report.completed, 1);
+  assert.equal(report.published, 1);
 
-  const afterTick = inspect
+  assert.equal(messageRow(result.outboxEventId), undefined, 'a published message is deleted');
+  const inbox = inspect
     .select()
-    .from(outboxEvents)
-    .where(eq(outboxEvents.id, result.outboxEventId))
-    .get();
-  assert.equal(afterTick?.status, 'completed');
-  assert.ok(afterTick?.processedAt);
+    .from(outboxInbox)
+    .where(
+      and(
+        eq(outboxInbox.consumer, 'invite-email'),
+        eq(outboxInbox.messageId, result.outboxEventId),
+      ),
+    )
+    .all();
+  assert.equal(inbox.length, 1, "the handler's inbox recorded the message");
 
   const sent = transport.list();
   assert.equal(sent.length, 1);
@@ -158,7 +164,7 @@ test('rollback safety: throw between steps 3 and 4 leaves no rows from this tran
   assert.equal(transport.list().length, 0);
 });
 
-test('worker crash recovery: stuck processing row is re-claimed and processed once', async () => {
+test('worker crash recovery: a lease that ran out is claimed again and processed once', async () => {
   transport.reset();
 
   const result = await onboarding.inviteUser({
@@ -169,49 +175,39 @@ test('worker crash recovery: stuck processing row is re-claimed and processed on
     initialPassword: 'temp-pass-12345',
   });
 
-  // Simulate a worker that claimed this event then died: status=processing,
-  // claimed_at well in the past, claimed_by some dead worker.
-  const longAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+  // A relay that claimed this message then died: its lease is still live, and
+  // a live lease is never taken over.
   inspect
-    .update(outboxEvents)
-    .set({
-      status: 'processing',
-      claimedAt: longAgo,
-      claimedBy: 'dead-worker-1',
-    })
-    .where(eq(outboxEvents.id, result.outboxEventId))
+    .update(outboxMessages)
+    .set({ leaseOwner: 'dead-relay', leaseUntil: Date.now() + 60_000 })
+    .where(eq(outboxMessages.id, result.outboxEventId))
     .run();
+  const whileLeased = await relay.runOnce();
+  assert.equal(whileLeased.claimed, 0, 'a live lease is never taken over');
 
-  const report = await claimer.tick({
-    workerInstanceId: 'live-worker-2',
-    stuckTimeoutMs: 60_000,
-  });
-  assert.equal(report.claimed, 1, 'live worker should re-claim the stuck event');
-  assert.equal(report.completed, 1);
-
-  const afterTick = inspect
-    .select()
-    .from(outboxEvents)
-    .where(eq(outboxEvents.id, result.outboxEventId))
-    .get();
-  assert.equal(afterTick?.status, 'completed');
-  assert.equal(afterTick?.claimedBy, 'live-worker-2');
+  // The dead relay's lease runs out: the next claim takes the message over.
+  inspect
+    .update(outboxMessages)
+    .set({ leaseUntil: Date.now() - 1 })
+    .where(eq(outboxMessages.id, result.outboxEventId))
+    .run();
+  const report = await relay.runOnce();
+  assert.equal(report.claimed, 1, 'the relay claims the message back once its lease ran out');
+  assert.equal(report.published, 1);
+  assert.equal(messageRow(result.outboxEventId), undefined);
 
   const sent = transport
     .list()
     .filter((e) => e.to === 'crash.recovery@acme.test');
   assert.equal(sent.length, 1, 'handler must be called exactly once');
 
-  // Tick again — the now-completed row must not be re-claimed.
-  const idleReport = await claimer.tick({
-    workerInstanceId: 'live-worker-2',
-    stuckTimeoutMs: 60_000,
-  });
+  // Run again — the published message is gone and must not come back.
+  const idleReport = await relay.runOnce();
   assert.equal(idleReport.claimed, 0);
   assert.equal(
     transport.list().filter((e) => e.to === 'crash.recovery@acme.test')
       .length,
     1,
-    'handler still called exactly once after the idle tick',
+    'handler still called exactly once after the idle run',
   );
 });

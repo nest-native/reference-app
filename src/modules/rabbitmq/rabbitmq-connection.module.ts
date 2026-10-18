@@ -35,9 +35,10 @@ class RabbitmqTopology implements OnModuleInit {
 
 /**
  * Closes the connection on shutdown. It runs in `onApplicationShutdown`, after
- * the outbox worker has stopped (the worker process aborts its loops before it
- * closes the app), and every channel on the connection closes with it — an
- * unacked delivery goes back to its queue for the next consumer.
+ * the outbox relay has stopped (it lets its in-flight publishes settle in
+ * `onModuleDestroy`, the phase before), and every channel on the connection
+ * closes with it — an unacked delivery goes back to its queue for the next
+ * consumer.
  */
 @Injectable()
 class RabbitmqConnectionCloser implements OnApplicationShutdown {

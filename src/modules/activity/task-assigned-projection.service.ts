@@ -9,17 +9,18 @@ import { ActivityService } from './activity.service';
 import { taskAssignedActivity } from './task-activity.projection';
 
 /**
- * The one place a `task.assigned` delivery is applied — shared by the
- * in-process {@link import('../outbox/activity.handler').ActivityHandler} and
- * the Kafka {@link import('../inbox/task-activity.consumer').TaskActivityConsumer}
- * — so the feed row and the deferred assignment-reminder job always commit (or
- * roll back) together:
+ * The one place a `task.assigned` delivery is applied — shared, through
+ * {@link import('../inbox/task-activity.projections').TaskActivityProjections},
+ * by the in-process {@link import('../outbox/activity.handler').ActivityHandler}
+ * and the Kafka and RabbitMQ consumers — so the feed row and the deferred
+ * assignment-reminder job always commit (or roll back) together:
  *
- *   - Under the Kafka profile the inbox's `runOnce` transaction is already
- *     open; `@Transactional()` (propagation REQUIRED) joins it, so the dedup
- *     row, the feed row, and the job row are one atomic commit.
- *   - Under the in-process profile there is no ambient transaction; the
- *     decorator opens one around the pair.
+ *   - Delivered, it runs inside the transaction that records the delivery in
+ *     the consumer's inbox (`processInTransaction()`); `@Transactional()`
+ *     (propagation REQUIRED) joins it, so the inbox record, the feed row, and
+ *     the job row are one atomic commit.
+ *   - Called on its own, with no ambient transaction, the decorator opens one
+ *     around the pair.
  *
  * Redelivery can never schedule a second reminder, via two independent layers:
  *

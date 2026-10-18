@@ -1,9 +1,9 @@
 import { Module } from '@nestjs/common';
-import { RabbitInboxConsumer } from '@nest-native/messaging/rabbitmq';
 import { ActivityModule } from '../activity/activity.module';
 import { AuditLogModule } from '../audit-log/audit-log.module';
 import { TaskActivityProjections } from '../inbox/task-activity.projections';
 import { InboxDeliveries } from './inbox-deliveries.service';
+import { RabbitInbox } from './rabbit-inbox';
 import { TaskActivityRabbitConsumer } from './task-activity.rabbit-consumer';
 import { UserInvitedRabbitConsumer } from './user-invited.rabbit-consumer';
 
@@ -15,7 +15,7 @@ import { UserInvitedRabbitConsumer } from './user-invited.rabbit-consumer';
 @Module({
   imports: [AuditLogModule, ActivityModule],
   providers: [
-    RabbitInboxConsumer,
+    RabbitInbox,
     TaskActivityProjections,
     InboxDeliveries,
     UserInvitedRabbitConsumer,

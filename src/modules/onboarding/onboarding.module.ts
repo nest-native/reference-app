@@ -5,14 +5,12 @@ import { MembershipsModule } from '../memberships/memberships.module';
 import { ProjectsRepository } from '../projects/projects.repository';
 import { OrganizationOnboardingService } from './organization-onboarding.service';
 
-// Onboarding only needs the transactional OUTBOX PRODUCER (the `enqueue` that
-// writes the row in the business transaction) — it never touches the claimer or
-// the transport. `MessagingModule` is global and exports a SINGLE `OutboxProducer`
-// (and a single claimer), so the service injects it directly with no per-module
-// wiring: there is no longer any risk of instantiating a second claimer (the
-// hazard the old hand-rolled `OutboxModule` import had to work around). The
-// producer is a stateless `@InjectTransaction()` insert that shares the same DB
-// the claimer drains.
+// Onboarding only needs the outbox's PRODUCER side (`Outbox.add()`, which writes
+// the message in the business transaction) — it never touches the relay or a
+// transport. `OutboxModule` is global and exports a single `Outbox` (and a
+// single relay), so the service injects it directly with no per-module wiring.
+// The message goes through the app's SQLite store into the same database the
+// relay drains.
 @Module({
   imports: [
     DatabaseModule,

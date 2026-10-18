@@ -11,7 +11,7 @@ import {
   TRPCClientError,
 } from '@trpc/client';
 import superjson from 'superjson';
-import { OutboxClaimer } from '@nest-native/messaging';
+import { OutboxRelay } from '@nestjs/outbox';
 import type { AppRouter } from '../../src/@generated/server';
 import { seedDatabase } from '../../scripts/seed';
 
@@ -76,11 +76,11 @@ test('activity.list createdAt crosses the wire as a real Date', async () => {
   assert.equal(task.title, 'Ship the transformer showcase');
 
   // Drain the outbox so task.created is projected into the activity feed.
-  await app.get(OutboxClaimer).tick();
+  await app.get(OutboxRelay).runOnce();
 
   const feed = await client.activity.list.query({ projectId });
   const entry = feed.find((event) => event.type === 'task.created');
-  assert.ok(entry, 'expected a task.created activity row after the tick');
+  assert.ok(entry, 'expected a task.created activity row after the relay ran');
 
   const createdAt: Date = entry.createdAt; // inferred `Date`, not `string`
   assert.ok(createdAt instanceof Date, 'createdAt must arrive as a Date');

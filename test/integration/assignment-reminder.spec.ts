@@ -7,11 +7,7 @@ import type { INestApplicationContext } from '@nestjs/common';
 import { ContextIdFactory, NestFactory } from '@nestjs/core';
 import { and, eq } from 'drizzle-orm';
 import { getDrizzleToken } from '@nestjs/drizzle';
-import {
-  OUTBOX_TRANSPORT,
-  OutboxClaimer,
-  type OutboxTransport,
-} from '@nest-native/messaging';
+import { Outbox, OutboxRelay } from '@nestjs/outbox';
 import { JobsClaimer, JobsService } from '@nest-native/jobs';
 import type { SqliteJobStore } from '@nest-native/jobs/sqlite';
 import { drainJobs } from '@nest-native/jobs/testing';
@@ -34,10 +30,10 @@ const dbPath = join(
 
 let app: INestApplicationContext;
 let tasksService: TasksService;
-let outboxClaimer: OutboxClaimer;
+let relay: OutboxRelay;
+let outbox: Outbox<AppDatabase>;
 let jobsClaimer: JobsClaimer;
 let jobsService: JobsService<SqliteJobStore>;
-let transport: OutboxTransport;
 let inspect: AppDatabase;
 let seededOrgId: number;
 let seededAdminId: number;
@@ -82,10 +78,10 @@ before(async () => {
     // { logger: false } hides why.
     abortOnError: false,
   });
-  outboxClaimer = app.get(OutboxClaimer);
+  relay = app.get(OutboxRelay);
+  outbox = app.get<Outbox<AppDatabase>>(Outbox);
   jobsClaimer = app.get(JobsClaimer);
   jobsService = app.get(JobsService);
-  transport = app.get<OutboxTransport>(OUTBOX_TRANSPORT);
   inspect = app.get<AppDatabase>(getDrizzleToken());
 
   const contextId = ContextIdFactory.create();
@@ -118,8 +114,8 @@ test('assigning a task schedules exactly one pending reminder job with the event
   assert.equal(reminderJobs().length, 0);
 
   // Deliver the committed events (task.created + task.assigned) in-process.
-  const report = await outboxClaimer.tick();
-  assert.ok(report.completed >= 2, 'both lifecycle events delivered');
+  const report = await relay.runOnce();
+  assert.ok(report.published >= 2, 'both lifecycle events delivered');
 
   const rows = reminderJobs();
   assert.equal(rows.length, 1, 'exactly one reminder job scheduled');
@@ -136,15 +132,20 @@ test('assigning a task schedules exactly one pending reminder job with the event
 });
 
 test('redelivering the task.assigned event never schedules a second reminder (feed dedup)', async () => {
-  // Replay the exact delivery through the in-process transport, as a broker
-  // redelivery would: the projection sees the duplicate feed row and skips the
-  // enqueue entirely.
-  await transport.publish({
-    id: 'redelivery-of-task-assigned',
-    topic: 'task.assigned',
-    payload: assignedPayload,
-    idempotencyKey: `task.assigned:${seededOrgId}:${taskId}:redelivery`,
-  });
+  // The same event again under a new message id, which the handler's inbox has
+  // not seen, so the projection runs: it sees the duplicate feed row and skips
+  // the enqueue entirely.
+  inspect.transaction(() =>
+    outbox.add(inspect, {
+      topic: 'task.assigned',
+      payload: assignedPayload,
+      headers: {
+        'x-idempotency-key': `task.assigned:${seededOrgId}:${taskId}:redelivery`,
+      },
+    }),
+  );
+  const report = await relay.runOnce();
+  assert.equal(report.published, 1, 'the redelivery was delivered');
   assert.equal(reminderJobs().length, 1, 'still exactly one reminder job');
 });
 

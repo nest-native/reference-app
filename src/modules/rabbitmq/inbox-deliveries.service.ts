@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import type { RabbitConsumeResult } from '@nest-native/messaging/rabbitmq';
+import type { RabbitConsumeResult } from './rabbit-inbox';
 
 /** One settled delivery: the queue it came from and what the inbox did with it. */
 export interface InboxDelivery extends RabbitConsumeResult {

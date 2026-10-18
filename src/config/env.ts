@@ -38,10 +38,19 @@ export interface AppEnv {
   cacheTtlMs: number;
   /** Read cache: unix-socket path for cross-process invalidation (app + worker). Unset = in-process only. */
   cacheSocketPath: string | undefined;
+  // The worker's knobs, shared by the outbox relay and the jobs runner.
   outbox: {
+    /** OUTBOX_POLL_MS: how long both loops wait between polls when idle. */
     pollIntervalMs: number;
+    /** OUTBOX_BATCH_SIZE: messages (and jobs) claimed per poll. */
     batchSize: number;
+    /**
+     * OUTBOX_STUCK_TIMEOUT_MS: the relay's lease, and the jobs runner's stuck
+     * timeout. The relay refuses a lease that is not longer than its 10 s
+     * publish timeout, so 10 000 or less fails startup.
+     */
     stuckTimeoutMs: number;
+    /** OUTBOX_WORKER_ID: names the jobs runner; the relay's leases need no name. */
     workerInstanceId: string | undefined;
   };
   /** Delay before the assignment-reminder job runs (0 = due immediately). */

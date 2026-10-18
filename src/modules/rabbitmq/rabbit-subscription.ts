@@ -1,11 +1,11 @@
 import type { Logger } from '@nestjs/common';
-import type { RabbitInboxConsumer } from '@nest-native/messaging/rabbitmq';
 import type {
   Channel,
   ConfirmChannel,
   ConsumeMessage,
   RecoveringChannelModel,
 } from 'amqplib';
+import type { RabbitInbox } from './rabbit-inbox';
 import type { ConsumedQueue } from './rabbitmq.topology';
 
 /** What a subscriber does with one delivery, given the channels it arrived on. */
@@ -117,4 +117,4 @@ export async function subscribe(
   return { stop };
 }
 
-export type { RabbitInboxConsumer };
+export type { RabbitInbox };

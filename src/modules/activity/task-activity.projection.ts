@@ -10,11 +10,11 @@ import type { RecordActivityInput } from './activity.service';
 
 /**
  * Pure projection from a task lifecycle event to an activity-feed row, shared by
- * the in-process handler and the Kafka inbox consumer so both profiles write the
- * SAME `summary` and `dedupKey`. The `dedupKey` mirrors the event's outbox
- * idempotency key (`<topic>:<orgId>:<taskId>[:<assigneeId>]`), which is also the
- * Kafka message key the inbox dedups on — one logical event maps to one feed row
- * regardless of transport or redelivery.
+ * the in-process handler and the broker inbox consumers so every profile writes
+ * the SAME `summary` and `dedupKey`. The `dedupKey` mirrors the event's
+ * `x-idempotency-key` (`<topic>:<orgId>:<taskId>[:<assigneeId>]`), which is also
+ * its Kafka message key — one logical event maps to one feed row regardless of
+ * transport or redelivery.
  */
 export function taskCreatedActivity(
   payload: TaskCreatedPayload,

@@ -7,9 +7,14 @@ import type { INestApplicationContext } from '@nestjs/common';
 import { ContextIdFactory, NestFactory } from '@nestjs/core';
 import { and, eq, inArray } from 'drizzle-orm';
 import { getDrizzleToken } from '@nestjs/drizzle';
-import { OutboxClaimer } from '@nest-native/messaging';
+import { type NewOutboxMessage, Outbox, OutboxRelay } from '@nestjs/outbox';
 import type { AppDatabase } from '../../src/database/database';
-import { activityEvents, outboxEvents, tasks } from '../../src/database/schema';
+import {
+  activityEvents,
+  outboxInbox,
+  outboxMessages,
+  tasks,
+} from '../../src/database/schema';
 import { ActivityService } from '../../src/modules/activity/activity.service';
 import { TasksService } from '../../src/modules/tasks/tasks.service';
 import { seedDatabase } from '../../scripts/seed';
@@ -24,18 +29,22 @@ const dbPath = join(
 let app: INestApplicationContext;
 let tasksService: TasksService;
 let activity: ActivityService;
-let claimer: OutboxClaimer;
+let relay: OutboxRelay;
+let outbox: Outbox<AppDatabase>;
 let inspect: AppDatabase;
 let seededOrgId: number;
 let seededAdminId: number;
 let seededProjectId: number;
 let taskId: number;
+// The three messages as they were added, for the redelivery test: a published
+// message's row is deleted.
+let published: NewOutboxMessage[] = [];
 
 const taskOutboxRows = () =>
   inspect
     .select()
-    .from(outboxEvents)
-    .where(inArray(outboxEvents.topic, TASK_TOPICS))
+    .from(outboxMessages)
+    .where(inArray(outboxMessages.topic, TASK_TOPICS))
     .all();
 
 const feedRows = () =>
@@ -60,7 +69,8 @@ before(async () => {
     // { logger: false } hides why.
     abortOnError: false,
   });
-  claimer = app.get(OutboxClaimer);
+  relay = app.get(OutboxRelay);
+  outbox = app.get<Outbox<AppDatabase>>(Outbox);
   activity = app.get(ActivityService);
   inspect = app.get<AppDatabase>(getDrizzleToken());
 
@@ -84,7 +94,7 @@ after(async () => {
   await app.close();
 });
 
-test('create → assign → complete writes the task rows and enqueues 3 lifecycle events', async () => {
+test('create → assign → complete writes the task rows and adds 3 lifecycle messages', async () => {
   const created = await tasksService.createTask({
     projectId: seededProjectId,
     title: 'Ship the activity feed',
@@ -115,32 +125,35 @@ test('create → assign → complete writes the task rows and enqueues 3 lifecyc
   assert.equal(row?.status, 'done');
   assert.equal(row?.assigneeId, seededAdminId);
 
-  // One outbox event per lifecycle step, all pending, all with scoped keys.
-  const enqueued = taskOutboxRows();
-  assert.equal(enqueued.length, 3);
+  // One outbox message per lifecycle step, none claimed yet, all with scoped keys.
+  const added = taskOutboxRows();
+  assert.equal(added.length, 3);
   assert.deepEqual(
-    enqueued.map((e) => e.topic).sort(),
+    added.map((m) => m.topic).sort(),
     ['task.assigned', 'task.completed', 'task.created'],
   );
-  for (const e of enqueued) {
-    assert.equal(e.status, 'pending');
-    assert.ok(e.idempotencyKey?.startsWith(`${e.topic}:${seededOrgId}:`));
+  for (const m of added) {
+    assert.equal(m.leaseOwner, null);
+    const headers = JSON.parse(m.headers) as Record<string, string>;
+    assert.ok(headers['x-idempotency-key']?.startsWith(`${m.topic}:${seededOrgId}:`));
   }
+  published = added.map((m) => ({
+    id: m.id,
+    topic: m.topic,
+    payload: JSON.parse(m.payload as string),
+    headers: JSON.parse(m.headers) as Record<string, string>,
+  }));
 
-  // Feed is still empty — it is only fed by the claimer, never the service.
+  // Feed is still empty — it is only fed by the relay, never the service.
   assert.equal(feedRows().length, 0);
 });
 
-test('claimer drains the events into the activity feed — one row per event', async () => {
-  const report = await claimer.tick();
+test('the relay drains the messages into the activity feed — one row per message', async () => {
+  const report = await relay.runOnce();
   assert.equal(report.claimed, 3);
-  assert.equal(report.completed, 3);
+  assert.equal(report.published, 3);
 
-  const drained = taskOutboxRows();
-  for (const e of drained) {
-    assert.equal(e.status, 'completed');
-    assert.ok(e.processedAt);
-  }
+  assert.equal(taskOutboxRows().length, 0, 'published messages are deleted');
 
   const feed = feedRows();
   assert.equal(feed.length, 3);
@@ -159,29 +172,33 @@ test('claimer drains the events into the activity feed — one row per event', a
   assert.equal(viaReader.length, 3);
 });
 
-test('redelivery is idempotent: re-ticking the same events adds no feed rows', async () => {
-  // Simulate an at-least-once redelivery: reset the completed outbox rows to
-  // pending so the claimer re-runs the in-process handler for each event.
-  inspect
-    .update(outboxEvents)
-    .set({
-      status: 'pending',
-      attempts: 0,
-      claimedAt: null,
-      claimedBy: null,
-      processedAt: null,
-      lastError: null,
-      availableAt: new Date(0).toISOString(),
-    })
-    .where(inArray(outboxEvents.topic, TASK_TOPICS))
-    .run();
+test('redelivery is idempotent: the same messages again add no feed rows', async () => {
+  // An at-least-once redelivery: the same three messages, same ids, added
+  // again (a published message's row is gone), so the relay delivers them to
+  // the in-process handler a second time.
+  inspect.transaction(() => outbox.add(inspect, published));
 
-  const report = await claimer.tick();
-  // The handler DID run again for all three (they were re-claimed + completed)…
+  const report = await relay.runOnce();
+  // The relay DID deliver all three again…
   assert.equal(report.claimed, 3);
-  assert.equal(report.completed, 3);
+  assert.equal(report.published, 3);
 
-  // …yet the (org_id, dedup_key) unique index kept the feed at exactly 3 rows.
+  // …yet the handler's inbox skipped them: still exactly 3 feed rows, and one
+  // inbox record per message.
   const feed = feedRows();
   assert.equal(feed.length, 3, 'redelivery must not duplicate feed rows');
+  const inbox = inspect
+    .select()
+    .from(outboxInbox)
+    .where(
+      and(
+        eq(outboxInbox.consumer, 'activity-feed'),
+        inArray(
+          outboxInbox.messageId,
+          published.map((m) => m.id as string),
+        ),
+      ),
+    )
+    .all();
+  assert.equal(inbox.length, 3);
 });

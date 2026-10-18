@@ -47,8 +47,7 @@ export {
   users,
 };
 export type { ActivityEvent, NewActivityEvent } from './activity';
-export type { InboxEvent, InboxStatus, NewInboxEvent } from './inbox-events';
-export { INBOX_STATUSES } from './inbox-events';
+export type { InboxEvent, NewInboxEvent } from './inbox-events';
 export type { AuditEvent, NewAuditEvent } from './audit-events';
 export type {
   Job,
@@ -71,8 +70,7 @@ export type {
   OutboxInboxRow,
   OutboxMessageRow,
 } from './outbox';
-export type { NewOutboxEvent, OutboxEvent, OutboxStatus } from './outbox-events';
-export { OUTBOX_STATUSES } from './outbox-events';
+export type { NewOutboxEvent, OutboxEvent } from './outbox-events';
 export type { NewProject, Project } from './projects';
 export type { NewTask, Task, TaskStatus } from './tasks';
 export { TASK_STATUSES } from './tasks';

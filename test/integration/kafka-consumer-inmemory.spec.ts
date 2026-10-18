@@ -7,9 +7,12 @@ import type { INestApplicationContext } from '@nestjs/common';
 // Static, unlike the env-reading imports below: the CLS packages ship separate
 // ESM and CommonJS builds, and a dynamic import() here would load the ESM copy
 // while src/ (compiled to CommonJS) requires the other one — two copies whose
-// injection tokens never match.
+// injection tokens never match. @nestjs/outbox is ESM-only, yet under tsx an
+// import() of it loads a second copy as well, whose OutboxStorage token is not
+// the one src/ requires.
 import { ClsPluginTransactional } from '@nestjs-cls/transactional';
 import { TransactionalAdapterDrizzleOrm } from '@nestjs-cls/transactional-adapter-drizzle-orm';
+import { OutboxModule } from '@nestjs/outbox';
 import { ClsModule } from 'nestjs-cls';
 
 // This spec drives the UserInvitedConsumer against the in-memory broker
@@ -73,8 +76,8 @@ const deliveredAuditRows = (subjectId: string) =>
 const inboxRowsForKey = (key: string) =>
   inspect
     .select()
-    .from(schema.inboxEvents)
-    .where(drizzleOps.eq(schema.inboxEvents.messageKey, key))
+    .from(schema.outboxInbox)
+    .where(drizzleOps.eq(schema.outboxInbox.messageId, key))
     .all();
 
 async function deliver(
@@ -114,14 +117,15 @@ before(async () => {
   const { AuditLogModule } = await import(
     '../../src/modules/audit-log/audit-log.module'
   );
-  const { INBOX_STORE, InboxService } = await import('@nest-native/messaging');
-  const { SqliteInboxStore } = await import('@nest-native/messaging/sqlite');
-  const { KafkaInboxConsumer } = await import('@nest-native/messaging/kafka');
+  const { sqliteOutboxStoreProvider } = await import(
+    '../../src/modules/outbox/sqlite-outbox.store'
+  );
+  const { KafkaInbox } = await import('../../src/modules/inbox/kafka-inbox');
   const { UserInvitedConsumer } = await import(
     '../../src/modules/inbox/user-invited.consumer'
   );
 
-  // Mirror AppModule's CLS + Drizzle transactional wiring so InboxService /
+  // Mirror AppModule's CLS + Drizzle transactional wiring so KafkaInbox /
   // AuditLogService get their @InjectTransaction() proxy, and run the consumer
   // against the in-memory broker instead of a real cluster.
   @Module({
@@ -141,16 +145,13 @@ before(async () => {
       }),
       AuditLogModule,
       kafka.KafkaTestModule.forRoot(),
+      // A consumer-only app: the outbox for its inbox, on the app's SQLite
+      // store, with no relay.
+      OutboxModule.forRoot({ relay: { enabled: false } }),
     ],
-    // Mirror MessagingModule's inbox wiring (the library's InboxService over the
-    // SQLite inbox store) plus the library's KafkaInboxConsumer engine, then the
-    // app's thin consumer shell on top.
-    providers: [
-      { provide: INBOX_STORE, useValue: new SqliteInboxStore() },
-      InboxService,
-      KafkaInboxConsumer,
-      UserInvitedConsumer,
-    ],
+    // AppModule's inbox wiring (the store registered with the outbox) plus the
+    // app's KafkaInbox engine, then its thin consumer shell on top.
+    providers: [sqliteOutboxStoreProvider, KafkaInbox, UserInvitedConsumer],
   })
   class KafkaInMemoryTestModule {}
 
@@ -169,20 +170,21 @@ after(async () => {
   await app.close();
 });
 
-test('consumes a user.invited message: writes one audit row and one inbox row', async () => {
+test('consumes a user.invited message: writes one audit row and one inbox record', async () => {
   const key = 'inmem-evt-1';
   await deliver(key, validPayload());
 
   assert.equal(deliveredAuditRows('999').length, 1, 'one delivery audit row');
-  assert.equal(inboxRowsForKey(key).length, 1, 'one inbox dedup row');
+  assert.equal(inboxRowsForKey(key).length, 1, 'one inbox record');
 });
 
-test('redelivery of the same key is deduplicated (still one inbox row)', async () => {
+test('redelivery of the same key is deduplicated (still one inbox record)', async () => {
   const key = 'inmem-evt-dup';
-  await deliver(key, validPayload());
-  await deliver(key, validPayload()); // redelivery, same event id
+  await deliver(key, { ...validPayload(), invitedUserId: 998 });
+  await deliver(key, { ...validPayload(), invitedUserId: 998 }); // redelivery, same event id
 
-  assert.equal(inboxRowsForKey(key).length, 1, 'redelivery writes no second row');
+  assert.equal(inboxRowsForKey(key).length, 1, 'redelivery writes no second record');
+  assert.equal(deliveredAuditRows('998').length, 1, 'the side effect ran once');
 });
 
 test('malformed payload is dead-lettered (DLQ message produced, no inbox row)', async () => {
@@ -193,7 +195,7 @@ test('malformed payload is dead-lettered (DLQ message produced, no inbox row)', 
   assert.equal(
     inboxRowsForKey(key).length,
     0,
-    'poison message writes no inbox row',
+    'poison message writes no inbox record',
   );
   const dlq = broker.getSentTo(DLQ_TOPIC);
   assert.equal(dlq.length, 1, 'one DLQ message produced');
@@ -206,7 +208,7 @@ test('malformed payload is dead-lettered (DLQ message produced, no inbox row)', 
 
 test('message with no derivable key is dead-lettered', async () => {
   broker.reset();
-  // No x-event-id header and no kafka key → not keyable → PermanentError → DLQ.
+  // No x-event-id header and no kafka key → not keyable → NonRetryableMessageError → DLQ.
   await broker.emit(TOPIC, { value: JSON.stringify(validPayload()) });
   await broker.idle();
 

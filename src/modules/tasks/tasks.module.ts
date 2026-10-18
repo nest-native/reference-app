@@ -6,8 +6,8 @@ import { TasksRepository } from './tasks.repository';
 import { TasksRouter } from './tasks.router';
 import { TasksService } from './tasks.service';
 
-// Mirrors ProjectsModule. The transactional OutboxProducer the service injects
-// comes from the global MessagingModule, so no messaging wiring lives here.
+// Mirrors ProjectsModule. The Outbox the service writes its messages through
+// comes from the global OutboxModule, so no outbox wiring lives here.
 // ProjectsRepository is one of the tenancy predicates the service checks
 // in-transaction (the task's project must belong to the caller's org); the
 // other — MembershipsRepository, for the assignee — arrives with AuthModule.

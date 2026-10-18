@@ -1,8 +1,7 @@
 import { ConflictException, Inject, Injectable } from '@nestjs/common';
 import { InjectTransaction, Transactional } from '@nestjs-cls/transactional';
 import { eq } from 'drizzle-orm';
-import { OutboxProducer } from '@nest-native/messaging';
-import type { SqliteOutboxStore } from '@nest-native/messaging/sqlite';
+import { Outbox, type OutboxMessage } from '@nestjs/outbox';
 import { hashPassword } from '../../auth/password';
 import type { AppDatabase } from '../../database/database';
 import {
@@ -17,6 +16,7 @@ import {
   OUTBOX_TOPIC_USER_INVITED,
   type UserInvitedPayload,
 } from '../outbox/outbox.constants';
+import { X_IDEMPOTENCY_KEY } from '../outbox/wire-contract';
 import { ProjectsRepository } from '../projects/projects.repository';
 
 export interface InviteUserInput {
@@ -32,6 +32,7 @@ export interface InviteUserResult {
   user: User;
   membership: Membership;
   project: Project;
+  /** The outbox message's id: the `x-event-id` consumers deduplicate on. */
   outboxEventId: string;
 }
 
@@ -43,10 +44,7 @@ export class OrganizationOnboardingService {
     private readonly memberships: MembershipsRepository,
     @Inject(ProjectsRepository) private readonly projects: ProjectsRepository,
     @Inject(AuditLogService) private readonly audit: AuditLogService,
-    // Typed with the SQLite store so `enqueue` returns the row synchronously
-    // (callable inside this synchronous @Transactional body).
-    @Inject(OutboxProducer)
-    private readonly outbox: OutboxProducer<SqliteOutboxStore>,
+    @Inject(Outbox) private readonly outbox: Outbox<AppDatabase>,
   ) {}
 
   // Declared `Promise<InviteUserResult>` so callers can `await` naturally:
@@ -90,11 +88,16 @@ export class OrganizationOnboardingService {
       orgId: input.orgId,
       projectId: project.id,
     };
-    const event = this.outbox.enqueue({
+    // `add()` is typed Awaitable, but the app's SQLite store answers
+    // synchronously, so the message is already built (and its row written in
+    // this transaction) when it returns.
+    const event = this.outbox.add(this.db, {
       topic: OUTBOX_TOPIC_USER_INVITED,
       payload,
-      idempotencyKey: `user.invited:${input.orgId}:${user.id}:${project.id}`,
-    });
+      headers: {
+        [X_IDEMPOTENCY_KEY]: `user.invited:${input.orgId}:${user.id}:${project.id}`,
+      },
+    }) as OutboxMessage<UserInvitedPayload>;
 
     return { user, membership, project, outboxEventId: event.id } as unknown as Promise<InviteUserResult>;
   }

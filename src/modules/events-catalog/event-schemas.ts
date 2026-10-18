@@ -22,10 +22,11 @@ import {
  */
 
 /**
- * The wire headers every event carries, set by the Kafka outbox transport in
- * `@nest-native/messaging`. Both are always present, so both are required.
- * This is a transport concern (not an outbox payload contract), so the schema
- * lives here with the catalog rather than in `outbox.constants.ts`.
+ * The wire headers every event carries, set by the app's Kafka outbox
+ * transport (`src/modules/outbox/kafka-outbox.transport.ts`, after the wire
+ * contract in `wire-contract.ts`). Both are always present, so both are
+ * required. This is a transport concern (not an outbox payload contract), so
+ * the schema lives here with the catalog rather than in `outbox.constants.ts`.
  */
 export const eventHeadersSchema = z
   .object({
