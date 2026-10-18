@@ -21,14 +21,19 @@ added them.
 - `OutboxModule.forRoot()` (`forRootAsync()` when a broker transport needs
   its client) replaces `MessagingModule` in all three profiles:
   - Producers pass their transaction to `Outbox.add(tx, …)`; the business key
-    rides in the `x-idempotency-key` header, and message ids are UUIDv7.
+    rides in the `x-idempotency-key` header, and message ids are UUIDv7. A
+    task's messages share an ordering key (`task:<org>:<task>`), so the relay
+    publishes them in commit order and holds the later ones back while an
+    earlier one is retried; the old claimer gave no order at all.
   - In-process, the handlers are `@OnOutboxMessage()` methods run by the
     module's `local` transport, each behind its own inbox (`invite-email`,
     `activity-feed`), which the old registry handlers did not have. The
     activity handler records its inbox entry in the projection's own
     transaction, through the same `TaskActivityProjections` the broker
     consumers use.
-  - Over Kafka and RabbitMQ the wire is unchanged. The module ships no
+  - Over Kafka and RabbitMQ the wire is unchanged: the same keys, values and
+    properties, and the two contract headers in the same order (a header a
+    producer adds would follow them). The module ships no
     transport over `@nest-native/kafka` or amqplib, so the app carries what
     messaging provided: the wire contract, `KafkaOutboxTransport`, the
     confirm-channel `RabbitOutboxTransport` (the relay's abort signal
@@ -41,15 +46,26 @@ added them.
   (`outbox_messages`, `outbox_dead_letters`, `outbox_inbox`). It passes the
   module's own contract suites (`@nestjs/outbox/testing`), run under
   node:test on the app's migrations, except the three cases that need a
-  second transaction open on one connection; a cross-process spec proves
-  commit order and lock waits with a second process instead.
+  second transaction open on one connection. A cross-process spec runs two
+  of them against a second process instead (commit order, and two
+  deliveries of a message meeting at the inbox key) and shows a claim
+  waiting for that process's lock; the third, producers and relays racing,
+  rests on the same single writer. A batch or an id list larger than one
+  statement can bind (32,766 variables: from 3,641 messages, or from 32,767
+  ids for a release, a requeue or a purge) is split across statements in
+  one transaction.
 - Migrations: 0007 adds the new tables; 0008 carries the unpublished events
   (pending, or claimed by a worker that never finished) over with their ids,
-  and the consumers' inbox records with their names; 0009 drops
-  `outbox_events` and `inbox_events`. **Upgrading: stop the old worker before
-  migrating**, or a carried-over event can be published twice (the consumers
-  deduplicate it). Failed events are not carried over; dump them first if
-  they matter.
+  the events the old worker gave up on as dead letters (`exhausted` when they
+  ran out of attempts, `rejected` otherwise, with the time they failed), and
+  the consumers' inbox records with their names; 0009 drops `outbox_events`
+  and `inbox_events`. drizzle's migrator applies them in one transaction.
+  **Upgrading: stop the old worker before migrating**, or a carried-over
+  event can be published twice. The Kafka and RabbitMQ consumers
+  deduplicate it on their carried-over inboxes. In-process, the old
+  handlers kept no inbox, so a carried-over event the old worker had already
+  handled is handled again: its invite email is sent again, and its feed row
+  written again under the feed's new key.
 - Behaviour that changes with the module:
   - A published message is deleted, so the outbox is no longer a delivery
     history.
@@ -59,20 +75,65 @@ added them.
     (`NonRetryableMessageError`); the old handlers threw plain errors and
     spent all ten attempts on it.
   - A topic with no handler is retried, where it used to fail at once.
-  - The retry budget stays at 10 attempts, 1 s doubling to 1 min, now
-    module-wide rather than per message.
+  - The retry budget stays at 10 attempts, waits doubling from 1 s to at most
+    1 min, now module-wide rather than per message. The module's equal jitter
+    puts each wait between half and all of that, where the old one added up
+    to 1 s: a message is dead-lettered 2 to 4 minutes after its first failure
+    instead of about 4.
   - Claims are leases, each with its own fencing token. `OUTBOX_STUCK_TIMEOUT_MS`
     is the lease, and since a publish gets 10 s, a lease of 10 s or less now
-    fails startup. `OUTBOX_WORKER_ID` only names the jobs runner.
-  - Producer-side dedup on `idempotency_key` is gone: a second message with
-    the same business key is accepted, and the consumers' inboxes and the
-    feed's own dedup key absorb it.
+    fails startup, with an error that names the variable. `OUTBOX_WORKER_ID`
+    only names the jobs runner.
+  - Producer-side dedup on `idempotency_key` is gone, and with it the refusal
+    of every repeated transition: assigning a task to its assignee again, or
+    back to an earlier one, and completing it twice all failed with
+    `UNIQUE constraint failed: outbox_events.idempotency_key`, a 500, and
+    rolled back. The consumers' inboxes deduplicate on the message id
+    (`x-event-id`), which every `add()` makes new, so they drop redeliveries,
+    not a second message with the same business key. So a transition that
+    changes nothing (assigning a task to the user working on it, completing a
+    done task) is now refused with a 409, and every other one is an event of
+    its own: the feed keys its row on the business key and the message id,
+    and the assignment reminder its `uniqueKey`, so a task assigned back to an
+    earlier assignee, or reopened and completed again, gets a feed row each
+    time and each assignment a reminder.
+  - `tasks.create` refuses a title holding U+0000 or a lone UTF-16 surrogate
+    with a 400. The title goes into the `task.created` payload, which
+    `Outbox.add()` refuses, so the request ended in a 500 inside the
+    transaction; the old outbox stored such a title.
+  - The in-process handlers now keep an inbox, and nothing in the module
+    prunes one. A nightly jobs schedule (`nightly-outbox-inbox-prune`, 03:30
+    UTC) calls `OutboxInbox.prune('30d')` in every profile.
 - `scripts/start-worker.ts` starts the official relay next to the jobs loop;
   `AppModule` keeps the relay off in every process, and the tests flush it
-  with `relay.runOnce()`. Closing the app stops the relay first: in-flight
-  publishes settle and the leases on unstarted messages are released.
+  with `relay.runOnce()`. A SIGTERM or SIGINT stops the relay at once, as the
+  old worker's single abort signal stopped both loops, while the jobs loop
+  finishes the job it is running; closing the app then waits for the relay:
+  in-flight publishes settle and the leases on unstarted messages are
+  released.
+- Node `>=22.12` everywhere it is stated: `.nvmrc` moves from 20 to 22 and
+  CONTRIBUTING from `>=20` to `>=22.12`, the floor `package.json` already
+  declared. Under Node 20, `require('@nestjs/outbox')` and
+  `require('@nestjs/drizzle')` fail with `ERR_REQUIRE_ESM`. `docs:check` now
+  holds `.nvmrc`, CONTRIBUTING, the README and the Dockerfile to
+  `engines.node`.
 - npm dropped two orphaned `@ai-sdk/*` entries and a stray root dependency
   line that an earlier Dependabot update had left in `package-lock.json`.
+
+### Fixed — the API's transactions wait for the worker's write lock
+
+- `createTask`, `assignTask`, `completeTask` and `inviteUser` open with
+  `BEGIN IMMEDIATE`, and the invite hashes the password before its
+  transaction, so the lock is not held across scrypt. Each reads before its
+  first write, and SQLite cannot make a deferred transaction that has read
+  wait for the write lock: while the worker held it, the call failed at once
+  with `SQLITE_BUSY` (`SQLITE_BUSY_SNAPSHOT` once the worker had committed),
+  where the 5 s busy timeout was meant to apply. In a probe of 600
+  back-to-back invites against the worker, 7 failed at the default 2 s poll
+  and about one in six at 100 ms, on `main` as with the official outbox; none
+  fail now. The worker's side already waited: its handlers and inbox engines
+  write first, and its claims open with `BEGIN IMMEDIATE` (the messaging
+  0.8.3 change below, which the app's SQLite store keeps).
 
 ### Changed — persistence moves to the official `@nestjs/drizzle`
 

@@ -419,12 +419,15 @@ service adds its message inside the transaction that writes the business
 rows, so both commit or neither does:
 
 ```ts
-@Transactional()
+@Transactional<TransactionalAdapterDrizzleOrm<AppDatabase>>({
+  behavior: 'immediate',           // it reads before it writes: see below
+})
 createTask(input: CreateTaskArgs): Promise<Task> {
   const task = this.repo.create({ … });
   this.outbox.add(this.db, {       // Outbox<AppDatabase>, this.db the CLS tx
     topic: 'task.created',
     payload,
+    key: `task:${org.id}:${task.id}`, // a task's events, in commit order
     headers: { 'x-idempotency-key': `task.created:${org.id}:${task.id}` },
   });
   return task as unknown as Promise<Task>;
@@ -433,11 +436,14 @@ createTask(input: CreateTaskArgs): Promise<Task> {
 
 The relay then claims committed messages under a lease, publishes them,
 deletes what it published, retries what failed with backoff (10 attempts,
-1 s doubling to 1 min), and moves what never succeeds — or what a handler
-rejects with `NonRetryableMessageError` — to a dead-letter table, where
-`OutboxDeadLetters` can list and requeue it. Each claim gets its own fencing
-token, so a relay that stalled past its lease cannot overwrite the work of
-the one that took over.
+waits doubling from 1 s to at most 1 min, each jittered between half and
+all of that: 2 to 4 minutes in all), and moves what never succeeds — or
+what a handler rejects with `NonRetryableMessageError` — to a dead-letter
+table, where `OutboxDeadLetters` can list and requeue it. Each claim gets
+its own fencing token, so a relay that stalled past its lease cannot
+overwrite the work of the one that took over. A task's messages share an
+ordering key, so they are published in the order they committed, a later
+one held back while an earlier one is retried.
 
 The module ships stores for PostgreSQL and MySQL. On SQLite the app
 implements its two public storage contracts itself, in
@@ -463,12 +469,26 @@ next to `OutboxModule`.
   the store, on the app's real migrations — all but the three cases that
   open a second transaction on the one connection.
   [`sqlite-outbox-store.cross-process.spec.ts`](https://github.com/nest-native/reference-app/blob/main/test/integration/sqlite-outbox-store.cross-process.spec.ts)
-  covers those with a second process holding the write lock.
+  takes two of those to a second process holding the write lock: keyed
+  messages numbered in commit order, whether the producer's transaction
+  took the lock at `BEGIN` or at its first write, and two deliveries of a
+  message meeting at the inbox key, after a commit and after a rollback. It
+  also shows a claim waiting for the lock. The third, producers and relays
+  racing over a key, is not repeated across processes; it rests on the
+  same single writer.
 - **Two processes, one file.** The API and the worker write the same SQLite
   file. SQLite has a single writer, so `seq` follows commit order across
   both processes with no lock per key, and the store's own multi-statement
   transactions open with `BEGIN IMMEDIATE`: they wait for the other
-  process's lock instead of failing with `SQLITE_BUSY_SNAPSHOT`.
+  process's lock instead of failing with `SQLITE_BUSY_SNAPSHOT`. The API's
+  producers read before they write (the project, the membership, the
+  invitee's email), so their `@Transactional()` methods ask for
+  `BEGIN IMMEDIATE` as well: a deferred transaction that has read fails at
+  once with `SQLITE_BUSY` when the worker holds the lock, where an
+  immediate one waits for it
+  ([`producers.cross-process.spec.ts`](https://github.com/nest-native/reference-app/blob/main/test/integration/producers.cross-process.spec.ts)).
+  The worker's handlers and inbox engines write first, and wait at that
+  write.
 - **Production stance.** One SQLite file on one host is this demo's setup.
   The module's production checklist keeps the outbox on a database server
   — a container's disk goes away with the container — and the
@@ -488,13 +508,29 @@ and the consumers' engines (`KafkaInbox`, `RabbitInbox`) record each
 delivery with `OutboxInbox.processInTransaction()` in the transaction that
 applies it. In a real app, swap `FakeEmailTransport` for SES, Sendgrid, etc.
 
+Nothing deduplicates a business key on the producer's side, so every
+transition is an event of its own: the feed keys its row on the event's
+business key and message id, and the assignment reminder its `uniqueKey`,
+so a task assigned back to an earlier assignee, or reopened and completed
+again, gets a row (and a reminder) each time. A transition that changes
+nothing — assigning a task to the user working on it, completing a done
+task — is refused with a 409 instead of being published twice. The inboxes
+grow by a record per message and consumer; a nightly schedule on the jobs
+library ([`inbox-prune.job.ts`](https://github.com/nest-native/reference-app/blob/main/src/modules/outbox/inbox-prune.job.ts))
+prunes the records older than 30 days with `OutboxInbox.prune()`, which
+nothing in the module calls for you.
+
 > Upgrading a database the app ran on before the official outbox: stop the
 > old worker first, then migrate. Migration 0008 carries the unpublished
-> events over with their ids (and the consumers' inbox records with their
-> names), and 0009 drops the old `outbox_events` and `inbox_events` tables.
-> A worker still running the old code could publish a carried-over event a
-> second time, which the consumers would deduplicate. Failed events are not
-> carried over; dump them before migrating if they matter.
+> events over with their ids, the events the old worker gave up on as dead
+> letters (`exhausted` or `rejected`, which `OutboxDeadLetters` lists and
+> requeues), and the consumers' inbox records with their names; 0009 drops
+> the old `outbox_events` and `inbox_events` tables, in the same
+> transaction. A worker still running the old code could publish a
+> carried-over event a second time. The Kafka and RabbitMQ consumers would
+> deduplicate it on their carried-over inboxes; the in-process handlers
+> would not, since the old ones kept no inbox, so its invite email would be
+> sent again and its feed row written again.
 
 ## The worker process
 
@@ -506,10 +542,12 @@ the jobs loop from `@nest-native/jobs`. `AppModule` keeps the relay off in
 every process, so the API never publishes and the tests flush the outbox
 with `relay.runOnce()`.
 
-`SIGTERM` and `SIGINT` abort the jobs loop, and the worker closes the Nest
-container: the relay stops first (`onModuleDestroy`) — it stops claiming,
-lets in-flight publishes settle and releases the leases on messages it had
-not started — before the broker connections close (`onApplicationShutdown`).
+`SIGTERM` and `SIGINT` stop both: the relay stops claiming at once, and the
+jobs loop returns once the job it is running ends. Then the worker closes
+the Nest container, which waits for the relay's stop (`onModuleDestroy`) —
+in-flight publishes settle and the leases on messages it had not started
+are released — before the broker connections close
+(`onApplicationShutdown`).
 
 In production, run the API and the worker as two separate processes off the
 same image (see `docker-compose.yml`).
@@ -548,12 +586,16 @@ same image (see `docker-compose.yml`).
 | `test/integration/auth-password.spec.ts` | scrypt hash/verify positive + negative |
 | `test/integration/invite-user.workflow.spec.ts` | The three §7 tests (happy, rollback, crash recovery) |
 | `test/integration/outbox-relay.spec.ts` | A started relay drains on its own timer and stops promptly; a failed claim is logged and the relay keeps polling; closing the app stops it |
-| `test/integration/sqlite-outbox-store.contract.spec.ts` | The official outbox's contract suites against `SqliteOutboxStore` |
-| `test/integration/sqlite-outbox-store.cross-process.spec.ts` | A second process holding the write lock: a claim waits for it, and keyed messages are numbered in commit order |
-| `test/integration/outbox-carry-over.spec.ts` | Migrations 0008–0009 carry the old outbox's unpublished events and inbox records over, then drop its tables |
+| `test/integration/sqlite-outbox-store.contract.spec.ts` | The official outbox's contract suites against `SqliteOutboxStore`, and batches and id lists past what one statement binds |
+| `test/integration/sqlite-outbox-store.cross-process.spec.ts` | A second process holding the write lock: a claim waits for it, keyed messages are numbered in commit order (lock taken at `BEGIN` or at the first write), and two deliveries of a message meet at the inbox key |
+| `test/integration/producers.cross-process.spec.ts` | The API's producers (`createTask`, `assignTask`, `completeTask`, `inviteUser`) wait for the worker's write lock instead of failing with `SQLITE_BUSY` |
+| `test/integration/worker-shutdown.spec.ts` | The worker in a child process: a `SIGTERM` during a long job stops the relay at once, lets the job finish, and exits cleanly |
+| `test/integration/rabbit-outbox-transport.spec.ts`, `rabbit-inbox.spec.ts` | The RabbitMQ transport and inbox engine on fake channels: confirms, returns and nacks; the 2^53 id, the `x-error` cap, a failed dead-letter copy, `retry.maxAttempts` |
+| `test/integration/inbox-prune.spec.ts` | The nightly inbox prune: its schedule, and an occurrence deleting records older than 30 days |
+| `test/integration/outbox-carry-over.spec.ts` | Migrations 0008–0009 carry the old outbox's unpublished events, its failed ones (as dead letters) and its inbox records over, then drop its tables |
 | `test/e2e/auth-flow.spec.ts` | Login flow over real HTTP; 401 on wrong password / no token / bad token |
 | `test/e2e/trpc-ping.smoke.spec.ts` | `GET /trpc/ping` returns 'pong'; `/health` returns ok |
-| `test/e2e/core-modules.spec.ts` | Authenticated flow over real HTTP across the three core routers |
+| `test/e2e/core-modules.spec.ts` | Authenticated flow over real HTTP across the three core routers; a task title no database stores is a 400, a transition that changes nothing a 409 |
 | `test/integration/tenant-authz.spec.ts` | Cross-org project/assignee are refused like missing ones, nothing committed; an invite cannot attach an existing account; login picks the oldest membership |
 | `test/e2e/roles-authz.spec.ts` | RBAC over real HTTP: viewer/member/admin limits, and a revoked membership blocking the next request — reads and the AI assistant included |
 | `test/integration/auth-context.spec.ts` | The guards' caller extractor: tRPC reads the procedure context, never the caller's input |
