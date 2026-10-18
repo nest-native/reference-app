@@ -85,7 +85,7 @@ repeated logins always resolve the same tenant). The token carries no role.
 
 ## Getting started
 
-Requires **Node ≥ 22** (the AI SDK requires it).
+Requires **Node ≥ 22.12**: the AI SDK requires 22, and `@nestjs/drizzle` and `@nestjs/outbox`, ESM-only, load through `require(esm)`, unflagged from 22.12.
 
 ```bash
 nvm use

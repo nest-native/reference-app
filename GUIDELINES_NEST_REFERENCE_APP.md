@@ -152,7 +152,10 @@ app's constitution.
   chain and its own CI step) fails when a table version drifts from the
   declared dependency range, when a library has no row, or when a count or a
   name goes stale in `package.json`, the README, or the Pages site. Bump a
-  library, run it.
+  library, run it. It also holds the Node floor: `.nvmrc`, CONTRIBUTING, the
+  README and the Dockerfile's default `NODE_VERSION` have to start from the
+  `engines.node` in `package.json`, since a lower Node cannot load the
+  ESM-only official modules.
 - Prefer **dynamic or roster-free badges** over hardcoded ones. A
   `libraries-7/7` badge is a version literal in disguise; keep it checked (it
   is) or drop it, but never leave it to be updated from memory.

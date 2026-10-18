@@ -15,7 +15,9 @@
  *   3. the package.json description names every @nest-native/* dependency and
  *      states the right library count ("all nine ...");
  *   4. the README's libraries-N/N badge counts the same roster;
- *   5. the docs/ Pages site names every library and states the same count.
+ *   5. the docs/ Pages site names every library and states the same count;
+ *   6. the Node floor package.json declares (`engines.node`) is the one
+ *      `.nvmrc`, CONTRIBUTING.md, the README and the Dockerfile start from.
  *
  * Everything is derived from the dependencies package.json declares — nothing
  * here hardcodes a library name, so adding the tenth library fails this check
@@ -240,6 +242,29 @@ if (badge) {
   }
 }
 
+// 6: the Node floor, wherever a contributor or an image starts from it. A
+// lower one loads the ESM-only official modules with ERR_REQUIRE_ESM.
+const engines = pkg.engines?.node ?? '';
+const floor = /^>=(\d+)\.(\d+)$/.exec(engines);
+if (!floor) {
+  fail(`package.json engines.node is "${engines}", not a ">=major.minor" floor`);
+} else {
+  const [, major, minor] = floor;
+  const nvmrc = read('.nvmrc').trim();
+  const dockerDefault = /^ARG NODE_VERSION=(\d+)\s*$/m.exec(read('Dockerfile'))?.[1];
+  const statedIn = [
+    ['.nvmrc', nvmrc === major, `says "${nvmrc}"`],
+    ['CONTRIBUTING.md', read('CONTRIBUTING.md').includes(`\`${engines}\``), `never says \`${engines}\``],
+    ['README.md', readme.includes(`Node ≥ ${major}.${minor}`), `never says "Node ≥ ${major}.${minor}"`],
+    ['README.md compatibility table', readme.includes(`| Node.js | \`${engines}\` |`), `has no "Node.js | \`${engines}\`" row`],
+    ['Dockerfile', dockerDefault === major, `defaults NODE_VERSION to ${dockerDefault}`],
+  ];
+  for (const [label, ok, problem] of statedIn) {
+    if (ok) checked.push(`${label} starts from Node ${engines}`);
+    else fail(`${label} ${problem}, package.json engines.node is ${engines}`);
+  }
+}
+
 // Report.
 if (problems.length === 0) {
   for (const line of checked) console.warn(`${LABEL}: ok   ${line}`);
@@ -251,6 +276,6 @@ if (problems.length === 0) {
 
 for (const problem of problems) console.error(`${LABEL}: FAIL ${problem}`);
 console.error(
-  `${LABEL}: ${problems.length} problem(s). The roster changed — update README.md, package.json, docs/ and the repo About together (GUIDELINES_NEST_REFERENCE_APP.md).`,
+  `${LABEL}: ${problems.length} problem(s). A claim drifted from package.json — update every place that states it together: README.md, package.json, docs/ and the repo About for the roster, .nvmrc, CONTRIBUTING.md, README.md and the Dockerfile for the Node floor (GUIDELINES_NEST_REFERENCE_APP.md).`,
 );
 process.exit(1);

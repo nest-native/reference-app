@@ -17,7 +17,9 @@ npm run db:migrate
 npm run smoke
 ```
 
-The repo uses Node.js `>=20`.
+The repo uses Node.js `>=22.12`: `@nestjs/drizzle` and `@nestjs/outbox` are
+ESM-only, and this CommonJS app loads them through `require(esm)`, unflagged
+from 22.12.0. `.nvmrc` names the major.
 
 ## Design Rules
 
