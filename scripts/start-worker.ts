@@ -21,10 +21,14 @@ async function main(): Promise<void> {
 
   const controller = new AbortController();
   let shuttingDown = false;
+  // Both loops stop on the signal. The jobs loop returns once its current tick
+  // does, which a long job can stretch; the relay must not go on claiming
+  // batches until then, so it stops right away (app.close() awaits it again).
   const onSignal = (signal: NodeJS.Signals) => {
     if (shuttingDown) return;
     shuttingDown = true;
     logger.log(`received ${signal}, draining current work…`);
+    void relay.stop();
     controller.abort();
   };
   process.on('SIGTERM', onSignal);
@@ -89,9 +93,9 @@ async function main(): Promise<void> {
   } finally {
     process.off('SIGTERM', onSignal);
     process.off('SIGINT', onSignal);
-    // Closing the app stops the relay first (onModuleDestroy): it stops
-    // claiming, lets in-flight publishes settle and releases the leases on
-    // messages it had not started.
+    // Closing the app stops the relay first (onModuleDestroy), or waits for
+    // the stop the signal began: it stops claiming, lets in-flight publishes
+    // settle and releases the leases on messages it had not started.
     await app.close();
     logger.log('worker stopped cleanly');
   }
