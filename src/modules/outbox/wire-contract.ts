@@ -1,8 +1,9 @@
-import { NonRetryableMessageError } from '@nestjs/outbox';
+import { NonRetryableMessageError, type OutboxMessage } from '@nestjs/outbox';
 
 // The wire contract the app's broker transports and consumers share: the
-// header names, the order a dedup key is derived in, and the JSON body codec,
-// in one place so the two halves cannot drift apart. It is byte for byte the
+// headers and their order, the order a dedup key is derived in, and the JSON
+// body codec, in one place so the two halves cannot drift apart. For the app's
+// messages, whose only header is the business key, it is byte for byte the
 // format @nest-native/messaging put on the wire, so a consumer of these topics
 // sees no change.
 
@@ -30,6 +31,22 @@ export type WireHeaderValue =
   | Buffer
   | (string | Buffer)[]
   | undefined;
+
+/**
+ * The headers a transport sends `message` with: `x-event-id` and
+ * `x-idempotency-key` (the id when the producer set no business key), in that
+ * order, then any other header the producer set.
+ */
+export function wireHeaders(message: OutboxMessage): Record<string, string> {
+  const others = Object.entries(message.headers).filter(
+    ([name]) => name !== X_EVENT_ID && name !== X_IDEMPOTENCY_KEY,
+  );
+  return {
+    [X_EVENT_ID]: message.id,
+    [X_IDEMPOTENCY_KEY]: message.headers[X_IDEMPOTENCY_KEY] ?? message.id,
+    ...Object.fromEntries(others),
+  };
+}
 
 /** A header value as a string: brokers deliver them as Buffers, or arrays of them. */
 export function headerToString(value: WireHeaderValue): string | undefined {

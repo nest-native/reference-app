@@ -44,8 +44,9 @@ export const eventHeadersSchema = z
     description:
       'Wire headers set on every published event by the transactional-outbox ' +
       'Kafka transport. The Kafka message key is `x-idempotency-key` (falling ' +
-      'back to `x-event-id`), giving per-entity ordering and the value the ' +
-      "consumer's inbox deduplicates on.",
+      'back to `x-event-id`), so a partition keeps the events of one business ' +
+      "key (one event type, one entity) in order. The consumers' inboxes " +
+      'deduplicate on `x-event-id`.',
   });
 
 /** Message payload sources (name → Zod schema) referenced by the handlers. */

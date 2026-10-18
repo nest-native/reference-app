@@ -1,10 +1,6 @@
 import { type OutboxMessage, OutboxTransport } from '@nestjs/outbox';
 import type { ConfirmChannel, Message } from 'amqplib';
-import {
-  encodeWireValue,
-  X_EVENT_ID,
-  X_IDEMPOTENCY_KEY,
-} from '../outbox/wire-contract';
+import { encodeWireValue, wireHeaders } from '../outbox/wire-contract';
 
 /**
  * Anything that opens confirm channels: amqplib's `ChannelModel` from
@@ -87,11 +83,7 @@ export class RabbitOutboxTransport extends OutboxTransport {
           mandatory: true,
           contentType: 'application/json',
           messageId: message.id,
-          headers: {
-            ...message.headers,
-            [X_EVENT_ID]: message.id,
-            [X_IDEMPOTENCY_KEY]: message.headers[X_IDEMPOTENCY_KEY] ?? message.id,
-          },
+          headers: wireHeaders(message),
         },
         (error: unknown) => {
           // The broker sends a return BEFORE the ack of the same publish, so by

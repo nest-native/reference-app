@@ -2,7 +2,7 @@ import type { KafkaProducerService } from '@nest-native/kafka';
 import { type OutboxMessage, OutboxTransport } from '@nestjs/outbox';
 import {
   encodeWireValue,
-  X_EVENT_ID,
+  wireHeaders,
   X_IDEMPOTENCY_KEY,
 } from './wire-contract';
 
@@ -32,18 +32,14 @@ export class KafkaOutboxTransport extends OutboxTransport {
     // A produce cannot be called back. Past publishTimeout the relay counts the
     // attempt failed; if the send lands anyway, its retry is a duplicate.
     signal.throwIfAborted();
-    const key = message.headers[X_IDEMPOTENCY_KEY] ?? message.id;
+    const headers = wireHeaders(message);
     await this.producer.send({
       topic: `${this.topicPrefix}${message.topic}`,
       messages: [
         {
-          key,
+          key: headers[X_IDEMPOTENCY_KEY],
           value: encodeWireValue(message.payload),
-          headers: {
-            ...message.headers,
-            [X_EVENT_ID]: message.id,
-            [X_IDEMPOTENCY_KEY]: key,
-          },
+          headers,
         },
       ],
     });

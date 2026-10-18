@@ -21,12 +21,15 @@ function message(
   id: string,
   payload: unknown,
   idempotencyKey?: string,
+  headers: Record<string, string> = {},
 ): OutboxMessage {
   return {
     id,
     topic: 'user.invited',
     payload,
-    headers: idempotencyKey ? { 'x-idempotency-key': idempotencyKey } : {},
+    headers: idempotencyKey
+      ? { 'x-idempotency-key': idempotencyKey, ...headers }
+      : headers,
     key: null,
     createdAt: Date.now(),
     availableAt: Date.now(),
@@ -75,14 +78,34 @@ test('sets the wire headers and JSON-encodes the payload', async () => {
   await transport.publish(message('evt-headers', payload, 'idem-xyz'), live());
 
   const sent = calls.send[0]?.messages[0];
-  assert.deepEqual(sent?.headers, {
-    'x-event-id': 'evt-headers',
-    'x-idempotency-key': 'idem-xyz',
-  });
+  // In this order, as @nest-native/messaging sent them: the producer put the
+  // business key in the message's headers first.
+  assert.deepEqual(Object.entries(sent?.headers ?? {}), [
+    ['x-event-id', 'evt-headers'],
+    ['x-idempotency-key', 'idem-xyz'],
+  ]);
 
   // value is a JSON string the consumer parses back to the original payload.
   assert.equal(typeof sent?.value, 'string');
   assert.deepEqual(JSON.parse(sent?.value as string), payload);
+});
+
+test("a producer's other headers follow the contract's two, and never replace the event id", async () => {
+  const { transport, calls } = makeTransport('');
+
+  await transport.publish(
+    message('evt-extra', {}, 'idem-extra', {
+      traceparent: '00-abc-def-01',
+      'x-event-id': 'spoofed',
+    }),
+    live(),
+  );
+
+  assert.deepEqual(Object.entries(calls.send[0]?.messages[0]?.headers ?? {}), [
+    ['x-event-id', 'evt-extra'],
+    ['x-idempotency-key', 'idem-extra'],
+    ['traceparent', '00-abc-def-01'],
+  ]);
 });
 
 test('an attempt the relay already gave up on sends nothing', async () => {
