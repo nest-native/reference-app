@@ -5,6 +5,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { InjectTransaction, Transactional } from '@nestjs-cls/transactional';
+import type { TransactionalAdapterDrizzleOrm } from '@nestjs-cls/transactional-adapter-drizzle-orm';
 import { Outbox } from '@nestjs/outbox';
 import type {
   CurrentOrganizationContext,
@@ -61,8 +62,17 @@ export class TasksService {
   // better-sqlite3 transaction. The @Transactional() cast bridges the
   // synchronous body to the Promise signature the decorator imposes on
   // callers — the same pattern as OrganizationOnboardingService.
+  //
+  // createTask and assignTask read before they write, so they open with BEGIN
+  // IMMEDIATE. The worker writes the same file from its own process, and SQLite
+  // cannot make a deferred transaction that has read wait for the write lock:
+  // it fails at once, with SQLITE_BUSY (SQLITE_BUSY_SNAPSHOT when the worker
+  // has committed meanwhile). An immediate one takes the lock at BEGIN, waiting
+  // out the busy timeout like any writer.
 
-  @Transactional()
+  @Transactional<TransactionalAdapterDrizzleOrm<AppDatabase>>({
+    behavior: 'immediate',
+  })
   createTask(input: CreateTaskArgs): Promise<Task> {
     const org = this.requireOrg();
     const user = this.requireUser();
@@ -98,7 +108,9 @@ export class TasksService {
     return task as unknown as Promise<Task>;
   }
 
-  @Transactional()
+  @Transactional<TransactionalAdapterDrizzleOrm<AppDatabase>>({
+    behavior: 'immediate',
+  })
   assignTask(input: AssignTaskArgs): Promise<Task> {
     const org = this.requireOrg();
     const user = this.requireUser();

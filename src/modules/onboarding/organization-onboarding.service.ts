@@ -1,5 +1,6 @@
 import { ConflictException, Inject, Injectable } from '@nestjs/common';
 import { InjectTransaction, Transactional } from '@nestjs-cls/transactional';
+import type { TransactionalAdapterDrizzleOrm } from '@nestjs-cls/transactional-adapter-drizzle-orm';
 import { eq } from 'drizzle-orm';
 import { Outbox, type OutboxMessage } from '@nestjs/outbox';
 import { hashPassword } from '../../auth/password';
@@ -47,6 +48,13 @@ export class OrganizationOnboardingService {
     @Inject(Outbox) private readonly outbox: Outbox<AppDatabase>,
   ) {}
 
+  // scrypt is slow on purpose, so the password is hashed before the
+  // transaction opens: it takes SQLite's write lock at BEGIN, and the worker's
+  // writes would wait on the hash.
+  inviteUser(input: InviteUserInput): Promise<InviteUserResult> {
+    return this.invite(input, hashPassword(input.initialPassword));
+  }
+
   // Declared `Promise<InviteUserResult>` so callers can `await` naturally:
   // @Transactional() always returns a Promise even if the inner body is
   // synchronous (which it must be on better-sqlite3 — the official
@@ -54,9 +62,19 @@ export class OrganizationOnboardingService {
   // synchronous sqlite driver and runs the transaction in sync mode).
   // The cast on the return value below bridges the sync body to the Promise
   // signature the decorator imposes on the caller's view of the method.
-  @Transactional()
-  inviteUser(input: InviteUserInput): Promise<InviteUserResult> {
-    const user = this.createInvitee(input.email, input.initialPassword);
+  //
+  // BEGIN IMMEDIATE, because the invite reads the invitee's email before it
+  // writes, and SQLite fails a deferred transaction that has read at once
+  // (SQLITE_BUSY) when it needs the write lock the worker holds, instead of
+  // waiting for it (see TasksService).
+  @Transactional<TransactionalAdapterDrizzleOrm<AppDatabase>>({
+    behavior: 'immediate',
+  })
+  private invite(
+    input: InviteUserInput,
+    passwordHash: string,
+  ): Promise<InviteUserResult> {
+    const user = this.createInvitee(input.email, passwordHash);
     const membership = this.memberships.create({
       orgId: input.orgId,
       userId: user.id,
@@ -116,7 +134,7 @@ export class OrganizationOnboardingService {
    * that last signal needs a pending-invitation row the invitee accepts, which
    * is the shape a production app should reach for.
    */
-  private createInvitee(email: string, initialPassword: string): User {
+  private createInvitee(email: string, passwordHash: string): User {
     const existing = this.db
       .select()
       .from(users)
@@ -131,7 +149,7 @@ export class OrganizationOnboardingService {
       .insert(users)
       .values({
         email,
-        passwordHash: hashPassword(initialPassword),
+        passwordHash,
         createdAt: new Date().toISOString(),
       })
       .returning()
