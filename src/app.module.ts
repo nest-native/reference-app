@@ -8,7 +8,11 @@ import { SqliteJobStore, SqliteScheduleStore } from '@nest-native/jobs/sqlite';
 import { KafkaModule, KafkaProducerService } from '@nest-native/kafka';
 import { OutboxModule, type OutboxModuleOptions } from '@nestjs/outbox';
 import type { RecoveringChannelModel } from 'amqplib';
-import { loadEnv, type RabbitmqEnv } from './config/env';
+import {
+  loadEnv,
+  OUTBOX_PUBLISH_TIMEOUT_MS,
+  type RabbitmqEnv,
+} from './config/env';
 import { AuthModule } from './auth/auth.module';
 import { RequestContextModule } from './context/request-context.module';
 import { DatabaseModule } from './database/database.module';
@@ -58,17 +62,19 @@ const drizzleInstanceToken = getDrizzleToken();
 // The relay is off in every process this module boots: scripts/start-worker.ts
 // starts it (one worker drains the outbox and the jobs queue), and the tests
 // flush it with runOnce(). publishTimeout bounds a publish, a broker's confirm
-// included, and has to stay below the lease (OUTBOX_STUCK_TIMEOUT_MS). The
-// retry budget is the one the app's events had before this module (10
-// attempts, 1 s doubling to 1 min); the module's default (20 attempts, up to
-// 5 min apart) keeps retrying for 30 to 60 minutes.
+// included, and has to stay below the lease (OUTBOX_STUCK_TIMEOUT_MS, which
+// loadEnv() checks). The retry budget keeps the app's earlier one: 10
+// attempts, waits from 1 s doubling to at most 1 min. With the module's equal
+// jitter (each wait between half and all of that), a message is dead-lettered
+// 2 to 4 minutes after its first failure; the module's default (20 attempts,
+// up to 5 min apart) keeps retrying for 30 to 60 minutes.
 const outboxOptions = {
   relay: {
     enabled: false,
     pollInterval: outboxEnv.pollIntervalMs,
     batchSize: outboxEnv.batchSize,
     lease: outboxEnv.stuckTimeoutMs,
-    publishTimeout: '10s',
+    publishTimeout: OUTBOX_PUBLISH_TIMEOUT_MS,
   },
   retry: { attempts: 10, backoff: { delay: '1s', maxDelay: '1m' } },
 } satisfies OutboxModuleOptions;

@@ -46,8 +46,9 @@ export interface AppEnv {
     batchSize: number;
     /**
      * OUTBOX_STUCK_TIMEOUT_MS: the relay's lease, and the jobs runner's stuck
-     * timeout. The relay refuses a lease that is not longer than its 10 s
-     * publish timeout, so a value of 10 s or less fails startup.
+     * timeout. The relay refuses a lease that is not longer than its publish
+     * timeout ({@link OUTBOX_PUBLISH_TIMEOUT_MS}), so a value of 10 s or less
+     * fails startup, here, with a message that names the variable.
      */
     stuckTimeoutMs: number;
     /** OUTBOX_WORKER_ID: names the jobs runner; the relay's leases need no name. */
@@ -63,6 +64,12 @@ export interface AppEnv {
   // are mutually exclusive — setting both fails at startup.
   rabbitmq?: RabbitmqEnv;
 }
+
+/**
+ * How long the outbox relay gives one publish, a broker's confirm included
+ * (`relay.publishTimeout` in AppModule). It has to stay below the lease.
+ */
+export const OUTBOX_PUBLISH_TIMEOUT_MS = 10_000;
 
 const MIN_AUTH_SECRET_LENGTH = 32;
 const DEV_AUTH_SECRET =
@@ -120,6 +127,18 @@ function readNonNegativeIntFromEnv(name: string, fallback: number): number {
     throw new Error(`Invalid ${name}: ${raw}`);
   }
   return parsed;
+}
+
+// The relay refuses a lease no longer than a publish may take, at startup, in
+// every process; refused here instead, the error names the variable to fix.
+function readStuckTimeout(): number {
+  const stuckTimeoutMs = readIntFromEnv('OUTBOX_STUCK_TIMEOUT_MS', 60_000);
+  if (stuckTimeoutMs <= OUTBOX_PUBLISH_TIMEOUT_MS) {
+    throw new Error(
+      `Invalid OUTBOX_STUCK_TIMEOUT_MS: ${stuckTimeoutMs} (the outbox relay's lease must be longer than its ${OUTBOX_PUBLISH_TIMEOUT_MS} ms publish timeout)`,
+    );
+  }
+  return stuckTimeoutMs;
 }
 
 // KAFKA_BROKERS is the single opt-in switch: set it and the Kafka profile turns
@@ -184,7 +203,7 @@ export function loadEnv(): AppEnv {
     outbox: {
       pollIntervalMs: readIntFromEnv('OUTBOX_POLL_MS', 2_000),
       batchSize: readIntFromEnv('OUTBOX_BATCH_SIZE', 32),
-      stuckTimeoutMs: readIntFromEnv('OUTBOX_STUCK_TIMEOUT_MS', 60_000),
+      stuckTimeoutMs: readStuckTimeout(),
       workerInstanceId: process.env.OUTBOX_WORKER_ID,
     },
     taskReminderDelayMs: readNonNegativeIntFromEnv(

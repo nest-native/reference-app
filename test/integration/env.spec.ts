@@ -10,6 +10,7 @@ import { loadEnv } from '../../src/config/env';
 // rest of src/ is deliberately pragmatic.)
 const KEYS = [
   'OUTBOX_POLL_MS',
+  'OUTBOX_STUCK_TIMEOUT_MS',
   'TASK_REMINDER_DELAY_MS',
   'AUTH_TTL_SECONDS',
   'PORT',
@@ -79,6 +80,24 @@ describe('loadEnv parsing', () => {
     assert.throws(() => loadEnv(), /Invalid OUTBOX_POLL_MS/);
     process.env.OUTBOX_POLL_MS = '-5';
     assert.throws(() => loadEnv(), /Invalid OUTBOX_POLL_MS/);
+  });
+
+  test("OUTBOX_STUCK_TIMEOUT_MS: the relay's lease must outlast its publish timeout, refused by name", () => {
+    delete process.env.OUTBOX_STUCK_TIMEOUT_MS;
+    assert.equal(loadEnv().outbox.stuckTimeoutMs, 60_000);
+
+    process.env.OUTBOX_STUCK_TIMEOUT_MS = '10001';
+    assert.equal(loadEnv().outbox.stuckTimeoutMs, 10_001);
+
+    // The relay would refuse these at startup, in every process, with an
+    // error about relay.lease that never names the variable.
+    for (const value of ['10000', '5000']) {
+      process.env.OUTBOX_STUCK_TIMEOUT_MS = value;
+      assert.throws(
+        () => loadEnv(),
+        new RegExp(`^Error: Invalid OUTBOX_STUCK_TIMEOUT_MS: ${value} \\(the outbox relay's lease must be longer than its 10000 ms publish timeout\\)$`),
+      );
+    }
   });
 
   test('readNonNegativeIntFromEnv: zero is valid (due immediately), negatives and NaN are not', () => {
