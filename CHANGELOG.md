@@ -6,6 +6,74 @@ added them.
 
 ## [Unreleased]
 
+### Changed — reliable messaging moves to the official `@nestjs/outbox`
+
+- NestJS shipped its own transactional outbox, `@nestjs/outbox` (0.0.1 on
+  2026-09-25, 0.1.2 on 2026-10-12), and it covers what this app used
+  `@nest-native/messaging` for. **Runtime dependency added: `@nestjs/outbox`
+  `0.1.2`** — the official transactional outbox, replacing
+  `@nest-native/messaging`, which is being retired in its favour. It is pinned
+  exactly, like `@nestjs/drizzle`, because its store contract is 0.x; it
+  brings `@nestjs/store-kit` (every peer optional), and neither package runs
+  an install script from the registry. Like `@nestjs/drizzle` it is ESM-only
+  and loads through `require(esm)`. The roster is now seven nest-native
+  libraries.
+- `OutboxModule.forRoot()` (`forRootAsync()` when a broker transport needs
+  its client) replaces `MessagingModule` in all three profiles:
+  - Producers pass their transaction to `Outbox.add(tx, …)`; the business key
+    rides in the `x-idempotency-key` header, and message ids are UUIDv7.
+  - In-process, the handlers are `@OnOutboxMessage()` methods run by the
+    module's `local` transport, each behind its own inbox (`invite-email`,
+    `activity-feed`), which the old registry handlers did not have. The
+    activity handler records its inbox entry in the projection's own
+    transaction, through the same `TaskActivityProjections` the broker
+    consumers use.
+  - Over Kafka and RabbitMQ the wire is unchanged. The module ships no
+    transport over `@nest-native/kafka` or amqplib, so the app carries what
+    messaging provided: the wire contract, `KafkaOutboxTransport`, the
+    confirm-channel `RabbitOutboxTransport` (the relay's abort signal
+    replaces its confirm timeout), and the `KafkaInbox` and `RabbitInbox`
+    engines, which now record deliveries with
+    `OutboxInbox.processInTransaction()` under the same consumer names.
+- The module stores messages on PostgreSQL and MySQL; for SQLite the app
+  implements its public `OutboxStore` and `OutboxInboxStore` contracts in
+  `SqliteOutboxStore`, synchronous like better-sqlite3, on tables of its own
+  (`outbox_messages`, `outbox_dead_letters`, `outbox_inbox`). It passes the
+  module's own contract suites (`@nestjs/outbox/testing`), run under
+  node:test on the app's migrations, except the three cases that need a
+  second transaction open on one connection; a cross-process spec proves
+  commit order and lock waits with a second process instead.
+- Migrations: 0007 adds the new tables; 0008 carries the unpublished events
+  (pending, or claimed by a worker that never finished) over with their ids,
+  and the consumers' inbox records with their names; 0009 drops
+  `outbox_events` and `inbox_events`. **Upgrading: stop the old worker before
+  migrating**, or a carried-over event can be published twice (the consumers
+  deduplicate it). Failed events are not carried over; dump them first if
+  they matter.
+- Behaviour that changes with the module:
+  - A published message is deleted, so the outbox is no longer a delivery
+    history.
+  - A message that keeps failing moves to a dead-letter table
+    (`OutboxDeadLetters` lists, requeues and purges them) instead of staying
+    as a `failed` row. A malformed payload is dead-lettered at once
+    (`NonRetryableMessageError`); the old handlers threw plain errors and
+    spent all ten attempts on it.
+  - A topic with no handler is retried, where it used to fail at once.
+  - The retry budget stays at 10 attempts, 1 s doubling to 1 min, now
+    module-wide rather than per message.
+  - Claims are leases, each with its own fencing token. `OUTBOX_STUCK_TIMEOUT_MS`
+    is the lease, and since a publish gets 10 s, a lease of 10 s or less now
+    fails startup. `OUTBOX_WORKER_ID` only names the jobs runner.
+  - Producer-side dedup on `idempotency_key` is gone: a second message with
+    the same business key is accepted, and the consumers' inboxes and the
+    feed's own dedup key absorb it.
+- `scripts/start-worker.ts` starts the official relay next to the jobs loop;
+  `AppModule` keeps the relay off in every process, and the tests flush it
+  with `relay.runOnce()`. Closing the app stops the relay first: in-flight
+  publishes settle and the leases on unstarted messages are released.
+- npm dropped two orphaned `@ai-sdk/*` entries and a stray root dependency
+  line that an earlier Dependabot update had left in `package-lock.json`.
+
 ### Changed — persistence moves to the official `@nestjs/drizzle`
 
 - NestJS shipped its own Drizzle module, `@nestjs/drizzle` (0.0.1,

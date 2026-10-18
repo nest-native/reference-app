@@ -12,14 +12,16 @@ The current supported runtime targets are:
 - tRPC `11.x`
 - Drizzle ORM `0.45.x`
 
-The supported line for each of the eight `@nest-native/*` libraries lives in
+The supported line for each of the seven `@nest-native/*` libraries lives in
 the README's [Compatibility](README.md#compatibility) table — kept in one
 place, and checked against `package.json` in CI by `npm run docs:check`.
 
 This repo is a reference application, not a published library. Security
 fixes target the running app and its module-level patterns. If a finding is
-in one of the `@nest-native/*` libraries, please report it on that library's
-own repository instead.
+in one of the `@nest-native/*` libraries, or in the official `@nestjs/drizzle`
+or `@nestjs/outbox` modules, please report it on that package's own
+repository instead. The SQLite outbox store, the broker transports and the
+inbox engines are the app's own code: report findings in them here.
 
 ## Reporting a Vulnerability
 
@@ -50,7 +52,9 @@ may involve:
 
 - transactional boundary correctness (`@Transactional()` scope)
 - request-scoped context isolation (`currentUser`, `currentOrganization`)
-- outbox worker claim/retry safety (re-claim semantics, idempotency)
+- outbox relay lease/retry safety in the app's SQLite store (lease
+  takeover, fencing, idempotency) and in its broker transports and inbox
+  engines
 - audit-event write-path completeness
 - input validation across tRPC procedures (Zod and class-validator)
 - migration safety (forward-only, no in-place data loss)

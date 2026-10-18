@@ -47,7 +47,7 @@ export interface AppEnv {
     /**
      * OUTBOX_STUCK_TIMEOUT_MS: the relay's lease, and the jobs runner's stuck
      * timeout. The relay refuses a lease that is not longer than its 10 s
-     * publish timeout, so 10 000 or less fails startup.
+     * publish timeout, so a value of 10 s or less fails startup.
      */
     stuckTimeoutMs: number;
     /** OUTBOX_WORKER_ID: names the jobs runner; the relay's leases need no name. */

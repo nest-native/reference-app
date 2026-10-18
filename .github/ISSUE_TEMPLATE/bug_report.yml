@@ -11,7 +11,7 @@ body:
 
         If this is security-sensitive, do not include exploit details here. See `SECURITY.md` first.
 
-        If the issue is in one of the eight `@nest-native/*` libraries themselves, please file it on that library's repo instead.
+        If the issue is in one of the seven `@nest-native/*` libraries themselves, please file it on that library's repo instead.
   - type: input
     id: commit
     attributes:
@@ -37,7 +37,7 @@ body:
         - tasks
         - activity (feed read-model / projections)
         - audit-log
-        - outbox / inbox (messaging, module or worker)
+        - outbox / inbox (the official outbox, store, consumers or worker)
         - kafka profile (consumers / transport)
         - reminders (deferred + scheduled jobs)
         - events-catalog (asyncapi)

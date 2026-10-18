@@ -64,5 +64,5 @@ VOLUME ["/data"]
 EXPOSE 3000
 
 # Default command runs the API. Override `node dist/scripts/start-worker.js`
-# to run the outbox worker instead.
+# to run the worker (the outbox relay + the jobs queue) instead.
 CMD ["node", "dist/main.js"]

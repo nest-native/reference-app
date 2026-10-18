@@ -5,7 +5,10 @@ contact_links:
     about: Please use private vulnerability reporting when available. If unavailable, read SECURITY.md before opening a public issue.
   - name: Library issue (any nest-native library)
     url: https://github.com/nest-native
-    about: Bugs in trpc, messaging, kafka, jobs, asyncapi, ai-sdk, cache, or lockout belong on that library's own repo.
+    about: Bugs in trpc, kafka, jobs, asyncapi, ai-sdk, cache, or lockout belong on that library's own repo.
   - name: "@nestjs/drizzle issue"
     url: https://github.com/nestjs/drizzle/issues
     about: The app's persistence runs on the official NestJS Drizzle module; its bugs belong on nestjs/drizzle.
+  - name: "@nestjs/outbox issue"
+    url: https://github.com/nestjs/outbox/issues
+    about: The app's reliable messaging runs on the official NestJS outbox module; its bugs belong on nestjs/outbox. The SQLite outbox store is the app's own, so report its bugs here.

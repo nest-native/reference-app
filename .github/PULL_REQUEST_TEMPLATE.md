@@ -15,7 +15,7 @@
 - [ ] `projects` / `tasks`
 - [ ] `activity` (feed read-model, projections)
 - [ ] `audit-log`
-- [ ] `outbox` / `inbox` (messaging, module or worker)
+- [ ] `outbox` / `inbox` (the official outbox: store, handlers, consumers, worker)
 - [ ] Kafka profile (consumers, transport)
 - [ ] `reminders` (deferred + scheduled jobs)
 - [ ] `events-catalog` (asyncapi) / `assistant` (ai-sdk)
@@ -35,8 +35,11 @@
       (`DrizzleModule.{forRoot,forRootAsync}`, `@InjectDrizzle`,
       `getDrizzleToken`), with transactions from `@nestjs-cls/transactional`
       (`@Transactional`, `@InjectTransaction`)
+- [ ] Only the public API of `@nestjs/outbox` used (`OutboxModule`,
+      `Outbox`, `@OnOutboxMessage`, `OutboxInbox`, `OutboxRelay`, the store
+      contracts); a bump keeps the SQLite store's contract spec green
 - [ ] Only primary onboarding APIs (`*.forRoot()` / `forRootAsync()` and the
-      public decorators) of the other libraries used — messaging, kafka, jobs,
+      public decorators) of the other libraries used — kafka, jobs,
       asyncapi, ai-sdk, cache, lockout
 - [ ] Roster unchanged, or the roster checklist was followed (README,
       `package.json` description, `docs/`, repo About — `npm run docs:check`)

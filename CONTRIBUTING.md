@@ -31,6 +31,10 @@ The repo uses Node.js `>=20`.
     `forRootAsync()`, `@InjectDrizzle()`, `getDrizzleToken()`; repositories
     are plain `@Injectable()` providers. Transactions come from
     `@nestjs-cls/transactional`: `@Transactional()`, `@InjectTransaction()`.
+  - `@nestjs/outbox` (the official module): `OutboxModule.forRoot()`/
+    `forRootAsync()`, `Outbox.add()`, `@OnOutboxMessage()`,
+    `OutboxInbox.processInTransaction()`, `OutboxRelay`, `OutboxDeadLetters`,
+    and `OutboxStorage.registerSource()` for the app's SQLite store.
 - Do not reach for library internals.
 - Migrations are forward-only and reversible-by-replacement. No destructive
   in-place data changes in a single migration. Splitting is cheap; data loss

@@ -60,8 +60,8 @@ const drizzleInstanceToken = getDrizzleToken();
 // flush it with runOnce(). publishTimeout bounds a publish, a broker's confirm
 // included, and has to stay below the lease (OUTBOX_STUCK_TIMEOUT_MS). The
 // retry budget is the one the app's events had before this module (10
-// attempts, 1 s doubling to 1 min); the package's default runs for about an
-// hour before a message is dead-lettered.
+// attempts, 1 s doubling to 1 min); the module's default (20 attempts, up to
+// 5 min apart) keeps retrying for 30 to 60 minutes.
 const outboxOptions = {
   relay: {
     enabled: false,
