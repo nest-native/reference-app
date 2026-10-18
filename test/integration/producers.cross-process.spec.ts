@@ -13,11 +13,11 @@ import { seedDatabase } from '../../scripts/seed';
 
 // The API and the worker are two processes on one SQLite file, and the worker
 // writes whenever it delivers a message or runs a job. Each producer below reads
-// before its first write (the project, the membership, the invitee's email). A
-// deferred transaction that has read cannot wait for the write lock: SQLite
-// fails its upgrade at once, with SQLITE_BUSY while the other process holds the
-// lock and with SQLITE_BUSY_SNAPSHOT once that one has committed. So the
-// producers open with BEGIN IMMEDIATE, which waits like any writer. A child
+// before its first write (the project, the membership, the task, the invitee's
+// email). A deferred transaction that has read cannot wait for the write lock:
+// SQLite fails its upgrade at once, with SQLITE_BUSY while the other process
+// holds the lock and with SQLITE_BUSY_SNAPSHOT once that one has committed. So
+// the producers open with BEGIN IMMEDIATE, which waits like any writer. A child
 // process plays the worker: it takes the write lock with BEGIN IMMEDIATE, says
 // so, holds it for HOLD_MS and commits.
 const HOLD_MS = 300;
@@ -115,7 +115,7 @@ test('createTask waits for the write lock, then commits', async () => {
   assertWaited(waited);
 });
 
-test('assignTask waits for the write lock, then commits', async () => {
+test('assignTask and completeTask wait for the write lock, then commit', async () => {
   const task = await tasksService.createTask({
     projectId: seededProjectId,
     title: 'Assign it while the worker writes',
@@ -126,6 +126,10 @@ test('assignTask waits for the write lock, then commits', async () => {
   );
   assert.equal(assigned.result.assigneeId, seededAdminId);
   assertWaited(assigned.waited);
+
+  const completed = await whileTheWorkerWrites(() => tasksService.completeTask(task.id));
+  assert.equal(completed.result.status, 'done');
+  assertWaited(completed.waited);
 });
 
 test('inviteUser waits for the write lock, then commits', async () => {

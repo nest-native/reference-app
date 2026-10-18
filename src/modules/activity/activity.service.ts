@@ -17,10 +17,11 @@ export interface RecordActivityInput {
 /**
  * Writes and reads the activity feed read-model. `record` is the exactly-once
  * sink every messaging profile converges on: the in-process outbox handler and
- * the broker inbox consumers each call it with a payload-derived `dedupKey`, and
- * the `(org_id, dedup_key)` unique index makes a duplicate delivery a silent
- * no-op (`onConflictDoNothing`). It is a synchronous, DB-only write so it is safe
- * inside the better-sqlite3 sync transaction the inbox opens around it.
+ * the broker inbox consumers each call it with the event's `dedupKey` (its
+ * business key and its message id), and the `(org_id, dedup_key)` unique index
+ * makes a duplicate delivery a silent no-op (`onConflictDoNothing`). It is a
+ * synchronous, DB-only write so it is safe inside the better-sqlite3 sync
+ * transaction the inbox opens around it.
  */
 @Injectable()
 export class ActivityService {

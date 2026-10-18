@@ -53,7 +53,9 @@ export class ActivityHandler {
         `${ctx.message.topic}: malformed payload`,
       );
     }
-    ctx.processInTransaction(this.db, () => projection.apply(payload));
+    ctx.processInTransaction(this.db, () =>
+      projection.apply(payload, ctx.message.id),
+    );
     return undefined as unknown as Promise<void>;
   }
 }

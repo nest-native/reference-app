@@ -60,7 +60,7 @@ export class TaskActivityRabbitConsumer
           channel,
           message,
           validate: (payload): payload is unknown => projection.validate(payload),
-          sideEffect: (payload) => projection.apply(payload),
+          sideEffect: (payload, dedupKey) => projection.apply(payload, dedupKey),
           deadLetter: {
             channel: deadLetterChannel,
             exchange: deadLetterExchange(this.env.exchange),

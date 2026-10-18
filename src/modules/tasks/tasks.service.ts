@@ -1,4 +1,5 @@
 import {
+  ConflictException,
   Inject,
   Injectable,
   NotFoundException,
@@ -63,12 +64,16 @@ export class TasksService {
   // synchronous body to the Promise signature the decorator imposes on
   // callers — the same pattern as OrganizationOnboardingService.
   //
-  // createTask and assignTask read before they write, so they open with BEGIN
-  // IMMEDIATE. The worker writes the same file from its own process, and SQLite
-  // cannot make a deferred transaction that has read wait for the write lock:
-  // it fails at once, with SQLITE_BUSY (SQLITE_BUSY_SNAPSHOT when the worker
-  // has committed meanwhile). An immediate one takes the lock at BEGIN, waiting
-  // out the busy timeout like any writer.
+  // Each one reads before it writes, so each opens with BEGIN IMMEDIATE. The
+  // worker writes the same file from its own process, and SQLite cannot make a
+  // deferred transaction that has read wait for the write lock: it fails at
+  // once, with SQLITE_BUSY (SQLITE_BUSY_SNAPSHOT when the worker has committed
+  // meanwhile). An immediate one takes the lock at BEGIN, waiting out the busy
+  // timeout like any writer.
+  //
+  // A task's messages share one ordering key, so the relay publishes them in
+  // the order they committed and holds the later ones back while an earlier
+  // one is retried.
 
   @Transactional<TransactionalAdapterDrizzleOrm<AppDatabase>>({
     behavior: 'immediate',
@@ -100,6 +105,7 @@ export class TasksService {
     this.outbox.add(this.db, {
       topic: OUTBOX_TOPIC_TASK_CREATED,
       payload,
+      key: taskKey(task),
       headers: {
         [X_IDEMPOTENCY_KEY]: `${OUTBOX_TOPIC_TASK_CREATED}:${org.id}:${task.id}`,
       },
@@ -122,6 +128,18 @@ export class TasksService {
         `User ${input.assigneeId} is not a member of this organization`,
       );
     }
+    // Every assignment is an event of its own: the feed gives each one a row
+    // and a reminder, a task assigned back to an earlier assignee included. One
+    // that changes nothing is refused rather than published twice.
+    const current = this.repo.findById(org.id, input.id);
+    if (
+      current?.status === 'in_progress' &&
+      current.assigneeId === input.assigneeId
+    ) {
+      throw new ConflictException(
+        `Task ${input.id} is already assigned to user ${input.assigneeId}`,
+      );
+    }
     const task = this.repo.assign(org.id, input.id, input.assigneeId);
     if (!task) throw new NotFoundException(`Task ${input.id} not found`);
 
@@ -135,6 +153,7 @@ export class TasksService {
     this.outbox.add(this.db, {
       topic: OUTBOX_TOPIC_TASK_ASSIGNED,
       payload,
+      key: taskKey(task),
       headers: {
         [X_IDEMPOTENCY_KEY]: `${OUTBOX_TOPIC_TASK_ASSIGNED}:${org.id}:${task.id}:${input.assigneeId}`,
       },
@@ -143,10 +162,18 @@ export class TasksService {
     return task as unknown as Promise<Task>;
   }
 
-  @Transactional()
+  @Transactional<TransactionalAdapterDrizzleOrm<AppDatabase>>({
+    behavior: 'immediate',
+  })
   completeTask(id: number): Promise<Task> {
     const org = this.requireOrg();
     const user = this.requireUser();
+    // Completing a task that is done already changes nothing: refused, not
+    // published as a second task.completed. A reopened (reassigned) task can
+    // be completed again.
+    if (this.repo.findById(org.id, id)?.status === 'done') {
+      throw new ConflictException(`Task ${id} is already done`);
+    }
     const task = this.repo.complete(org.id, id);
     if (!task) throw new NotFoundException(`Task ${id} not found`);
 
@@ -159,6 +186,7 @@ export class TasksService {
     this.outbox.add(this.db, {
       topic: OUTBOX_TOPIC_TASK_COMPLETED,
       payload,
+      key: taskKey(task),
       headers: {
         [X_IDEMPOTENCY_KEY]: `${OUTBOX_TOPIC_TASK_COMPLETED}:${org.id}:${task.id}`,
       },
@@ -190,4 +218,9 @@ export class TasksService {
     if (!this.currentUser) throw new UnauthorizedException();
     return this.currentUser;
   }
+}
+
+/** The ordering key a task's lifecycle messages share. */
+function taskKey(task: Task): string {
+  return `task:${task.orgId}:${task.id}`;
 }

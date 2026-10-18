@@ -58,6 +58,16 @@ async function readError(r: Response): Promise<TrpcErrorShape> {
   return superjson.deserialize<TrpcErrorShape>(body.error);
 }
 
+/** A mutation expected to fail: its error's httpStatus. */
+async function mutationStatus(path: string, body: unknown): Promise<number> {
+  const r = await fetch(`${baseUrl}${trpcPath}/${path}`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', ...auth() },
+    body: JSON.stringify(superjson.serialize(body)),
+  });
+  return (await readError(r)).data.httpStatus;
+}
+
 before(async () => {
   const dbPath = join(
     tmpdir(),
@@ -182,4 +192,20 @@ test('successful tenant-scoped queries are never publicly cacheable', async () =
   const r = await fetch(`${baseUrl}${trpcPath}/users.me`, { headers: auth() });
   assert.equal(r.status, 200);
   assert.equal(r.headers.get('cache-control'), null);
+});
+
+test('a task transition that changes nothing answers httpStatus 409', async () => {
+  const [project] = await get<{ id: number }[]>('projects.list');
+  const me = await get<{ id: number }>('users.me');
+  const task = await postMutation<{ id: number }>('tasks.create', {
+    projectId: project?.id,
+    title: 'Assign me once',
+  });
+  await postMutation('tasks.assign', { id: task.id, assigneeId: me.id });
+  assert.equal(
+    await mutationStatus('tasks.assign', { id: task.id, assigneeId: me.id }),
+    409,
+  );
+  await postMutation('tasks.complete', { id: task.id });
+  assert.equal(await mutationStatus('tasks.complete', { id: task.id }), 409);
 });

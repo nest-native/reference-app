@@ -94,7 +94,7 @@ export class TaskActivityConsumer {
       headers,
       payload,
       validate: (value): value is T => projection.validate(value),
-      sideEffect: (value) => projection.apply(value),
+      sideEffect: (value, dedupKey) => projection.apply(value, dedupKey),
       dlqTopic: `${topic}.DLQ`,
     });
   }

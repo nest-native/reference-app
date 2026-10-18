@@ -22,7 +22,10 @@ import { taskAssignedActivity } from './task-activity.projection';
  *   - Called on its own, with no ambient transaction, the decorator opens one
  *     around the pair.
  *
- * Redelivery can never schedule a second reminder, via two independent layers:
+ * Each assignment gets its own reminder: the dedup key carries the event's
+ * message id, so a task assigned back to an earlier assignee is reminded again.
+ * Past the consumer's inbox, redelivery of one event can never schedule a
+ * second reminder, via two independent layers:
  *
  *   1. The feed's `(org_id, dedup_key)` unique index — `record` returns
  *      `undefined` for an already-projected event and the enqueue is skipped
@@ -49,8 +52,8 @@ export class TaskAssignedProjection {
   // better-sqlite3 body runs synchronously (so it is also safe inside the
   // inbox's synchronous dedup transaction, where it simply joins).
   @Transactional()
-  apply(payload: TaskAssignedPayload): Promise<void> {
-    const activity = taskAssignedActivity(payload);
+  apply(payload: TaskAssignedPayload, eventId: string): Promise<void> {
+    const activity = taskAssignedActivity(payload, eventId);
     const inserted = this.activity.record(activity);
     if (inserted) {
       this.jobs.enqueue({

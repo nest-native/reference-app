@@ -3,7 +3,7 @@ import { strict as assert } from 'node:assert';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, test } from 'node:test';
-import type { INestApplicationContext } from '@nestjs/common';
+import { ConflictException, type INestApplicationContext } from '@nestjs/common';
 import { ContextIdFactory, NestFactory } from '@nestjs/core';
 import { and, eq, inArray } from 'drizzle-orm';
 import { getDrizzleToken } from '@nestjs/drizzle';
@@ -16,6 +16,7 @@ import {
   tasks,
 } from '../../src/database/schema';
 import { ActivityService } from '../../src/modules/activity/activity.service';
+import { OrganizationOnboardingService } from '../../src/modules/onboarding/organization-onboarding.service';
 import { TasksService } from '../../src/modules/tasks/tasks.service';
 import { seedDatabase } from '../../scripts/seed';
 
@@ -28,6 +29,7 @@ const dbPath = join(
 
 let app: INestApplicationContext;
 let tasksService: TasksService;
+let onboarding: OrganizationOnboardingService;
 let activity: ActivityService;
 let relay: OutboxRelay;
 let outbox: Outbox<AppDatabase>;
@@ -54,6 +56,12 @@ const feedRows = () =>
     .where(eq(activityEvents.projectId, seededProjectId))
     .all();
 
+/** One task's feed rows, oldest first: a row's dedup key is `<topic>:<org>:<task>:…`. */
+const feedRowsOf = (task: number) =>
+  feedRows()
+    .filter((r) => r.dedupKey.split(':')[2] === String(task))
+    .sort((a, b) => a.id - b.id);
+
 before(async () => {
   process.env.DATABASE_URL = dbPath;
   process.env.AUTH_SECRET = 'tasks-workflow-secret-at-least-32-chars-xxxxx';
@@ -71,6 +79,7 @@ before(async () => {
   });
   relay = app.get(OutboxRelay);
   outbox = app.get<Outbox<AppDatabase>>(Outbox);
+  onboarding = app.get(OrganizationOnboardingService);
   activity = app.get(ActivityService);
   inspect = app.get<AppDatabase>(getDrizzleToken());
 
@@ -125,7 +134,8 @@ test('create → assign → complete writes the task rows and adds 3 lifecycle m
   assert.equal(row?.status, 'done');
   assert.equal(row?.assigneeId, seededAdminId);
 
-  // One outbox message per lifecycle step, none claimed yet, all with scoped keys.
+  // One outbox message per lifecycle step, none claimed yet, all with scoped
+  // business keys and the task's ordering key.
   const added = taskOutboxRows();
   assert.equal(added.length, 3);
   assert.deepEqual(
@@ -134,6 +144,7 @@ test('create → assign → complete writes the task rows and adds 3 lifecycle m
   );
   for (const m of added) {
     assert.equal(m.leaseOwner, null);
+    assert.equal(m.key, `task:${seededOrgId}:${taskId}`);
     const headers = JSON.parse(m.headers) as Record<string, string>;
     assert.ok(headers['x-idempotency-key']?.startsWith(`${m.topic}:${seededOrgId}:`));
   }
@@ -201,4 +212,69 @@ test('redelivery is idempotent: the same messages again add no feed rows', async
     )
     .all();
   assert.equal(inbox.length, 3);
+});
+
+test('a transition that changes nothing is refused with a conflict and adds no message', async () => {
+  const task = await tasksService.createTask({
+    projectId: seededProjectId,
+    title: 'Refuse the no-ops',
+  });
+  await tasksService.assignTask({ id: task.id, assigneeId: seededAdminId });
+  const before = taskOutboxRows().length;
+
+  await assert.rejects(
+    () => tasksService.assignTask({ id: task.id, assigneeId: seededAdminId }),
+    (error: unknown) =>
+      error instanceof ConflictException && /already assigned/.test(error.message),
+  );
+  await tasksService.completeTask(task.id);
+  await assert.rejects(
+    () => tasksService.completeTask(task.id),
+    (error: unknown) =>
+      error instanceof ConflictException && /already done/.test(error.message),
+  );
+
+  assert.equal(taskOutboxRows().length, before + 1, 'only the completion was added');
+  await relay.runOnce();
+});
+
+test('every transition lands in the feed, in order: reassigned back, reopened and completed again', async () => {
+  const second = await onboarding.inviteUser({
+    orgId: seededOrgId,
+    invitedByUserId: seededAdminId,
+    email: 'second.member@acme.test',
+    projectName: 'Second Member Project',
+    initialPassword: 'temp-pass-12345',
+  });
+  const task = await tasksService.createTask({
+    projectId: seededProjectId,
+    title: 'Back and forth',
+  });
+  // A, B, A again, done; then A once more (reopening it) and done again. The
+  // two "assigned to A" and the two "completed" messages carry the same
+  // payloads, and each is still an event of its own.
+  await tasksService.assignTask({ id: task.id, assigneeId: seededAdminId });
+  await tasksService.assignTask({ id: task.id, assigneeId: second.user.id });
+  await tasksService.assignTask({ id: task.id, assigneeId: seededAdminId });
+  await tasksService.completeTask(task.id);
+  await tasksService.assignTask({ id: task.id, assigneeId: seededAdminId });
+  await tasksService.completeTask(task.id);
+
+  await relay.runOnce();
+
+  assert.deepEqual(
+    feedRowsOf(task.id).map((r) => r.summary),
+    [
+      'Task "Back and forth" created',
+      `Task #${task.id} assigned to user #${seededAdminId}`,
+      `Task #${task.id} assigned to user #${second.user.id}`,
+      `Task #${task.id} assigned to user #${seededAdminId}`,
+      `Task #${task.id} completed`,
+      `Task #${task.id} assigned to user #${seededAdminId}`,
+      `Task #${task.id} completed`,
+    ],
+  );
+  const row = inspect.select().from(tasks).where(eq(tasks.id, task.id)).get();
+  assert.equal(row?.status, 'done');
+  assert.equal(row?.assigneeId, seededAdminId);
 });
