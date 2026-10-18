@@ -25,6 +25,10 @@ import { TaskActivityInboxModule } from './modules/inbox/task-activity-inbox.mod
 import { TASK_SUMMARY_REPLY_TOPIC } from './modules/task-summary/task-summary.contract';
 import { TaskSummaryModule } from './modules/task-summary/task-summary.module';
 import { UserInvitedInboxModule } from './modules/inbox/user-invited-inbox.module';
+import {
+  InboxPruneHandler,
+  InboxPruneScheduleSetup,
+} from './modules/outbox/inbox-prune.job';
 import { InProcessOutboxModule } from './modules/outbox/in-process-outbox.module';
 import { KafkaOutboxTransport } from './modules/outbox/kafka-outbox.transport';
 import { sqliteOutboxStoreProvider } from './modules/outbox/sqlite-outbox.store';
@@ -197,7 +201,12 @@ function rabbitmqMessagingImports(
   ],
   controllers: [HealthController],
   // The outbox's store, registered with it once, in the module that imports
-  // OutboxModule: every profile keeps its messages and inboxes in SQLite.
-  providers: [sqliteOutboxStoreProvider],
+  // OutboxModule: every profile keeps its messages and inboxes in SQLite. And
+  // the nightly job that prunes those inboxes, in every profile too.
+  providers: [
+    sqliteOutboxStoreProvider,
+    InboxPruneHandler,
+    InboxPruneScheduleSetup,
+  ],
 })
 export class AppModule {}
