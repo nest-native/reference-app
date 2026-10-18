@@ -63,6 +63,7 @@
     "@nestjs/common": "11.2.3",
     "@nestjs/core": "11.2.3",
     "@nestjs/drizzle": "0.0.1",
+    "@nestjs/outbox": "0.1.2",
     "@nestjs/platform-express": "11.2.3",
     "@stalefree/core": "^0.1.0",
     "@trpc/server": "11.19.0",
