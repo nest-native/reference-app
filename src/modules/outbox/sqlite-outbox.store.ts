@@ -51,6 +51,14 @@ const DEAD_LETTER_FIELDS = {
   failedAt: outboxDeadLetters.failedAt,
 };
 
+/**
+ * A statement binds at most 32,766 variables (better-sqlite3's SQLite), and a
+ * message row takes 9. A larger batch, or a longer list of ids, takes several
+ * statements in one transaction, as in the module's MySQL store.
+ */
+const MESSAGES_PER_INSERT = 1_000;
+const IDS_PER_STATEMENT = 1_000;
+
 /** The database itself, as `drizzle()` returns it: with its better-sqlite3 connection. */
 export type SqliteDatabase = AppDatabase & { $client: Database.Database };
 
@@ -95,22 +103,22 @@ export class SqliteOutboxStore
 
   add(tx: AppDatabase, messages: readonly OutboxMessage[]): void {
     this.requireTransaction(tx, 'add');
-    if (messages.length === 0) {
-      return;
+    // In the batch's order, chunk after chunk, so seq follows it.
+    for (const chunk of chunks(messages, MESSAGES_PER_INSERT)) {
+      tx.insert(outboxMessages)
+        .values(
+          chunk.map((message) => ({
+            id: message.id,
+            topic: message.topic,
+            payload: toJson(message.payload),
+            headers: JSON.stringify(message.headers),
+            key: message.key,
+            createdAt: epochMs(message.createdAt),
+            availableAt: epochMs(message.availableAt),
+          })),
+        )
+        .run();
     }
-    tx.insert(outboxMessages)
-      .values(
-        messages.map((message) => ({
-          id: message.id,
-          topic: message.topic,
-          payload: toJson(message.payload),
-          headers: JSON.stringify(message.headers),
-          key: message.key,
-          createdAt: epochMs(message.createdAt),
-          availableAt: epochMs(message.availableAt),
-        })),
-      )
-      .run();
   }
 
   claim({ owner, now, leaseMs, limit }: OutboxClaimRequest): OutboxMessage[] {
@@ -195,16 +203,25 @@ export class SqliteOutboxStore
     if (ids.length === 0) {
       return 0;
     }
-    return this.db
-      .update(outboxMessages)
-      .set({ leaseOwner: null, leaseUntil: null })
-      .where(
-        and(
-          eq(outboxMessages.leaseOwner, owner),
-          inArray(outboxMessages.id, [...ids]),
-        ),
-      )
-      .run().changes;
+    return this.db.transaction(
+      (tx) => {
+        let released = 0;
+        for (const chunk of chunks(ids, IDS_PER_STATEMENT)) {
+          released += tx
+            .update(outboxMessages)
+            .set({ leaseOwner: null, leaseUntil: null })
+            .where(
+              and(
+                eq(outboxMessages.leaseOwner, owner),
+                inArray(outboxMessages.id, chunk),
+              ),
+            )
+            .run().changes;
+        }
+        return released;
+      },
+      { behavior: 'immediate' },
+    );
   }
 
   stats(now: number): OutboxStoreStats {
@@ -263,42 +280,54 @@ export class SqliteOutboxStore
   }
 
   requeueDeadLetters(filter: OutboxDeadLetterFilter, now: number): number {
-    const where = deadLetterWhere(filter);
-    if (where === null) {
+    const wheres = deadLetterWheres(filter);
+    if (wheres.length === 0) {
       return 0;
     }
     return this.db.transaction(
       (tx) => {
-        const clash = tx
-          .select({ id: outboxDeadLetters.id })
-          .from(outboxDeadLetters)
-          .innerJoin(outboxMessages, eq(outboxMessages.id, outboxDeadLetters.id))
-          .where(where)
-          .limit(1)
-          .get();
-        if (clash) {
-          throw new Error(
-            `Can't requeue dead letter "${clash.id}": a message with that id is pending`,
-          );
+        let requeued = 0;
+        for (const where of wheres) {
+          const clash = tx
+            .select({ id: outboxDeadLetters.id })
+            .from(outboxDeadLetters)
+            .innerJoin(outboxMessages, eq(outboxMessages.id, outboxDeadLetters.id))
+            .where(where)
+            .limit(1)
+            .get();
+          if (clash) {
+            throw new Error(
+              `Can't requeue dead letter "${clash.id}": a message with that id is pending`,
+            );
+          }
+          // Back with its id and its seq, a fresh budget and its history.
+          requeued += tx.run(sql`INSERT INTO outbox_messages
+              (seq, id, topic, payload, headers, key, created_at, available_at, attempts, last_error, history)
+            SELECT seq, id, topic, payload, headers, key, created_at, ${epochMs(now)}, 0, last_error, history
+            FROM outbox_dead_letters WHERE ${where}`).changes;
+          tx.delete(outboxDeadLetters).where(where).run();
         }
-        // Back with its id and its seq, a fresh budget and its history.
-        const moved = tx.run(sql`INSERT INTO outbox_messages
-            (seq, id, topic, payload, headers, key, created_at, available_at, attempts, last_error, history)
-          SELECT seq, id, topic, payload, headers, key, created_at, ${epochMs(now)}, 0, last_error, history
-          FROM outbox_dead_letters WHERE ${where}`);
-        tx.delete(outboxDeadLetters).where(where).run();
-        return moved.changes;
+        return requeued;
       },
       { behavior: 'immediate' },
     );
   }
 
   purgeDeadLetters(filter: OutboxDeadLetterFilter): number {
-    const where = deadLetterWhere(filter);
-    if (where === null) {
+    const wheres = deadLetterWheres(filter);
+    if (wheres.length === 0) {
       return 0;
     }
-    return this.db.delete(outboxDeadLetters).where(where).run().changes;
+    return this.db.transaction(
+      (tx) => {
+        let purged = 0;
+        for (const where of wheres) {
+          purged += tx.delete(outboxDeadLetters).where(where).run().changes;
+        }
+        return purged;
+      },
+      { behavior: 'immediate' },
+    );
   }
 
   recordInbox(
@@ -380,11 +409,12 @@ function leasedBy(id: string, owner: string): SQL | undefined {
 }
 
 /**
- * The dead letters a filter selects: `null` for one that selects nothing
- * (`ids: []`). The fields combine with AND, and an empty filter is refused
- * unless it says `all`.
+ * The dead letters a filter selects, as one condition per statement: one for
+ * each chunk of its `ids`, or a single one, and none for a filter that selects
+ * nothing (`ids: []`). The fields combine with AND, and an empty filter is
+ * refused unless it says `all`.
  */
-function deadLetterWhere(filter: OutboxDeadLetterFilter): SQL | null {
+function deadLetterWheres(filter: OutboxDeadLetterFilter): SQL[] {
   const { ids, topic, key, failedBefore, all } = filter;
   if (
     !all &&
@@ -395,11 +425,7 @@ function deadLetterWhere(filter: OutboxDeadLetterFilter): SQL | null {
   ) {
     throw new Error('Refusing an empty dead-letter filter; pass { all: true }');
   }
-  if (ids?.length === 0) {
-    return null;
-  }
   const conditions: SQL[] = [];
-  if (ids !== undefined) conditions.push(inArray(outboxDeadLetters.id, ids));
   if (topic !== undefined) conditions.push(eq(outboxDeadLetters.topic, topic));
   if (key !== undefined) conditions.push(eq(outboxDeadLetters.key, key));
   if (failedBefore !== undefined) {
@@ -412,7 +438,21 @@ function deadLetterWhere(filter: OutboxDeadLetterFilter): SQL | null {
     // `failed_at < 1.5` over whole milliseconds is `failed_at < 2`.
     conditions.push(lt(outboxDeadLetters.failedAt, Math.ceil(before)));
   }
-  return and(...conditions) ?? sql`true`;
+  if (ids === undefined) {
+    return [and(...conditions) ?? sql`true`];
+  }
+  return chunks(ids, IDS_PER_STATEMENT).map(
+    (chunk) => and(inArray(outboxDeadLetters.id, chunk), ...conditions) as SQL,
+  );
+}
+
+/** `values` in consecutive slices of at most `size`. */
+function chunks<T>(values: readonly T[], size: number): T[][] {
+  const result: T[][] = [];
+  for (let start = 0; start < values.length; start += size) {
+    result.push(values.slice(start, start + size));
+  }
+  return result;
 }
 
 function deadLetterPage({ limit = 50, offset = 0 }: OutboxDeadLetterQuery): {
