@@ -49,10 +49,10 @@ function freshStore(): OutboxStoreHarness<AppDatabase> & {
 // These open a second transaction while the first is still open. On one
 // connection that is "cannot start a transaction within a transaction", and a
 // second connection in this process would stall the event loop in
-// better-sqlite3's busy wait. Commit order across connections rests on
-// SQLite's single writer instead, which the cross-process spec proves. Listed
-// to exclude, not to include: a renamed case runs, and fails loudly, rather
-// than going missing.
+// better-sqlite3's busy wait. The cross-process spec runs the first and the
+// last across two processes instead; the race of producers and relays rests on
+// the same single writer. Listed to exclude, not to include: a renamed case
+// runs, and fails loudly, rather than going missing.
 const OVERLAPPING_TRANSACTIONS = new Set([
   'publishes a key in commit order when producers overlap',
   'keeps each key in order while producers and relays race',
