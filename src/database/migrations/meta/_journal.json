@@ -57,6 +57,20 @@
       "when": 1792295823041,
       "tag": "0007_official_outbox_tables",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1792297303373,
+      "tag": "0008_carry_over_outbox",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1792297333157,
+      "tag": "0009_drop_legacy_outbox_tables",
+      "breakpoints": true
     }
   ]
 }
