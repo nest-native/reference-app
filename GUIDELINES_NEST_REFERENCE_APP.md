@@ -1,24 +1,25 @@
 # GUIDELINES_NEST_REFERENCE_APP.md
 
-## Core Philosophy - This app SERVES the eight nest-native libraries
+## Core Philosophy - This app SERVES the seven nest-native libraries
 
 This is `nest-native/reference-app`: a production-shaped, multi-tenant
-work-tracking SaaS whose only job is to put **all eight
-[nest-native](https://github.com/nest-native) libraries** — `trpc`, `messaging`,
-`kafka`, `jobs`, `asyncapi`, `ai-sdk`, `lockout`, and `cache` — under realistic
-backend pressure, on the official `@nestjs/drizzle` module, and show how they
-compose. It is **read first and run second**. Every decision optimizes for a
-reader who wants to lift a pattern into their own app.
+work-tracking SaaS whose only job is to put **all seven
+[nest-native](https://github.com/nest-native) libraries** — `trpc`, `kafka`,
+`jobs`, `asyncapi`, `ai-sdk`, `lockout`, and `cache` — under realistic backend
+pressure, on the official `@nestjs/drizzle` and `@nestjs/outbox` modules, and
+show how they compose. It is **read first and run second**. Every decision
+optimizes for a reader who wants to lift a pattern into their own app.
 
 Follow these assumptions in **EVERY** file you generate or modify. This is the
 app's constitution.
 
 ### 1. What This App Is (and Is Not)
 
-- It **serves the libraries**. Every module exists to exercise one of the eight
-  under realistic pressure — a typed API, reliable domain events, an event
-  backbone, deferred jobs, a documented event catalog, a streaming AI assistant,
-  brute-force login lockout, and tag-invalidated read caching.
+- It **serves the libraries**. Every module exists to exercise one of the seven
+  under realistic pressure — a typed API, an event backbone, deferred jobs, a
+  documented event catalog, a streaming AI assistant, brute-force login
+  lockout, and tag-invalidated read caching — with reliable domain events on
+  the official outbox underneath.
 - It is **not** a product, **not** a starter or scaffold, and **not** a generic
   NestJS boilerplate. There is no CLI, no second frontend, no multi-database
   story, no GraphQL — those are deliberate omissions, not gaps to fill.
@@ -35,6 +36,14 @@ app's constitution.
   `DrizzleModule.forRoot({ db })`, plain `@Injectable()` repositories, and
   transactions from `@nestjs-cls/transactional`. The nest-native libraries
   take its `getDrizzleToken()` as their `drizzleInstanceToken`.
+- **Reliable messaging runs on the official `@nestjs/outbox`.** NestJS shipped
+  its own transactional outbox in 2026-09, covering what
+  `@nest-native/messaging` was used for here, so the app moved to it the same
+  way: `OutboxModule.forRoot()` / `forRootAsync()`, `Outbox.add(tx, …)` inside
+  the business transaction, `@OnOutboxMessage()` handlers in-process, and
+  `OutboxInbox.processInTransaction()` in the broker consumers. The module
+  ships stores for PostgreSQL and MySQL only, so the app keeps its messages in
+  its own `SqliteOutboxStore` (see Rule 2).
 - Use only each library's **primary onboarding API** (`*.forRoot()` /
   `forRootAsync()` / `forFeature()`, the public decorators). Reaching into a
   package's internals is a smell — if you need an internal, the public API has a
@@ -48,11 +57,25 @@ app's constitution.
 - The workflow when a rough edge shows up: **stop**, open the fix as its **own
   separate PR to the relevant library**, get it merged and released, then resume
   here against the improved API. `MessagingModule.forRoot`'s `imports` option
-  and `KafkaInboxConsumer`'s `dedupKey` argument exist precisely because
+  and `KafkaInboxConsumer`'s `dedupKey` argument, in `@nest-native/messaging`
+  (which the app ran on before the official outbox), exist precisely because
   building here made the gap visible.
 - Do **not** work around a library limitation with a local shim, a private-API
   reach, or a copy-pasted internal. A workaround hides the exact signal this app
   exists to produce.
+- The app's own **`SqliteOutboxStore` is not such a shim.** It implements
+  `@nestjs/outbox`'s public storage contracts (`OutboxStore`,
+  `OutboxInboxStore`), the extension point the module documents for any other
+  database, and upstream declined new store drivers on 2026-10-08 as a better
+  fit for a community package. Keep its contract spec green as the proof
+  (every `@nestjs/outbox` bump, which is pinned exactly while the contract is
+  0.x, needs it plus a read of the interfaces' JSDoc), and do not propose a
+  SQLite store upstream without Rodrigo's explicit OK. The same goes for the
+  broker transports and inbox engines in `src/modules/outbox`, `inbox` and
+  `rabbitmq`, ported from `@nest-native/messaging`: the module's only broker
+  transport, `ClientProxyTransport`, would change the wire, so the app writes
+  its own against the public `OutboxTransport` class and records deliveries
+  with the public `OutboxInbox`.
 
 ### 3. Pragmatic Coverage (100% and full-src mutation are NON-goals)
 
@@ -61,9 +84,9 @@ app's constitution.
   Chasing 100% here would add test noise that teaches nothing about the
   integration.
 - What **does** earn explicit tests: the transactional invite/task workflow, the
-  outbox relay, inbox dedup, the reminder job's exactly-once scheduling and
-  execution, the AsyncAPI catalog, and the AI stream — the seams where libraries
-  meet.
+  outbox relay and the app's outbox store (the official contract suites), inbox
+  dedup, the reminder job's exactly-once scheduling and execution, the AsyncAPI
+  catalog, and the AI stream — the seams where libraries meet.
 - Mutation testing runs **scoped and on-demand**, never across the whole `src/`
   tree by default and never in CI. **Full-source mutation is an explicit
   non-goal**; the useful signal is *which mutants survive* on the files a change
@@ -71,19 +94,20 @@ app's constitution.
 
 ### 4. Three Messaging Profiles (KAFKA_BROKERS or RABBITMQ_URL flips the WHOLE app)
 
-- **In-process (default).** The outbox relays through an in-process transport
-  and handlers build the activity feed synchronously — SQLite in a file, no
-  broker. This is the profile `npm run test` exercises.
+- **In-process (default).** The outbox's built-in `local` transport runs the
+  app's `@OnOutboxMessage()` handlers, each behind its own inbox, and they build
+  the activity feed — SQLite in a file, no broker. This is the profile
+  `npm run test` exercises.
 - **Kafka.** Setting `KAFKA_BROKERS` makes the *exact same domain code* relay
-  through `KafkaOutboxTransport`, with `@KafkaConsumer`s on the other side.
-  Event bodies, dedup keys, and wire headers are identical; only the transport
-  swaps.
+  through the app's `KafkaOutboxTransport`, with `@KafkaConsumer`s on the other
+  side. Event bodies, dedup keys, and wire headers are identical; only the
+  transport swaps.
 - **RabbitMQ.** Setting `RABBITMQ_URL` does the same over RabbitMQ: the outbox
-  relays through `RabbitOutboxTransport` to one topic exchange
-  (`RABBITMQ_EXCHANGE`, default `reference-app.events`), and
-  `RabbitInboxConsumer`s run the same read-sides as the Kafka consumers —
+  relays through the app's `RabbitOutboxTransport` to one topic exchange
+  (`RABBITMQ_EXCHANGE`, default `reference-app.events`), and consumers on the
+  app's `RabbitInbox` engine run the same read-sides as the Kafka consumers —
   through the shared `userInvitedDelivered` and `TaskActivityProjections`, so
-  the two broker profiles cannot drift apart. The app declares its own topology
+  the profiles cannot drift apart. The app declares its own topology
   at startup (quorum queues, a dead-letter exchange and a dead-letter queue per
   consumed queue); the task lifecycle's three topics share one queue and the
   consumer picks the projection by routing key. The two broker profiles are
@@ -96,9 +120,10 @@ app's constitution.
 
 ### 5. The Worker Model (one process drains outbox + jobs)
 
-- A **single** background worker process drains **both** the messaging outbox
-  relay **and** the jobs queue — `npm run start:worker`. There is intentionally
-  one worker, not one process per concern.
+- A **single** background worker process drains **both** the outbox — it
+  starts the official relay, which `AppModule` keeps off in every process —
+  **and** the jobs queue — `npm run start:worker`. There is intentionally one
+  worker, not one process per concern.
 - Both queues are **tables in the same database** — no Redis. The
   assignment-reminder job is enqueued in the same transaction as the
   `task.assigned` projection (its `uniqueKey` is the event's dedup key), and the
@@ -109,12 +134,12 @@ app's constitution.
 
 ### 6. The Roster Is a Claim (change it in ONE change)
 
-- "All eight libraries" is this app's headline claim, and it is stated in
+- "All seven libraries" is this app's headline claim, and it is stated in
   **four** places that drift apart silently. When the roster changes — a
   library added, dropped, or renamed — all four move **in the same PR**:
   1. `package.json` `description` — the count word and every
      `@nest-native/*` name.
-  2. `README.md` — the badge, the "Eight libraries, eight chapters" table, and
+  2. `README.md` — the badge, the "Seven libraries, seven chapters" table, and
      the **Compatibility** table (one row per library, versions read off
      `package.json`).
   3. `docs/` — the Pages site: `index.html`'s lede and roster grid, plus
@@ -127,9 +152,12 @@ app's constitution.
   chain and its own CI step) fails when a table version drifts from the
   declared dependency range, when a library has no row, or when a count or a
   name goes stale in `package.json`, the README, or the Pages site. Bump a
-  library, run it.
+  library, run it. It also holds the Node floor: `.nvmrc`, CONTRIBUTING, the
+  README and the Dockerfile's default `NODE_VERSION` have to start from the
+  `engines.node` in `package.json`, since a lower Node cannot load the
+  ESM-only official modules.
 - Prefer **dynamic or roster-free badges** over hardcoded ones. A
-  `libraries-8/8` badge is a version literal in disguise; keep it checked (it
+  `libraries-7/7` badge is a version literal in disguise; keep it checked (it
   is) or drop it, but never leave it to be updated from memory.
 - Any check of this kind **iterates the declared dependencies** — every
   `@nest-native/*` key in `package.json` — instead of hardcoding a list of
@@ -177,8 +205,8 @@ npm run infra:down    # removes the broker container and volume
 - `test:kafka` runs `test/integration/reliable-messaging.kafka.spec.ts` with
   `KAFKA_BROKERS=localhost:19092` and `KAFKA_TOPIC_PREFIX=reliable-e2e.` set for
   that spec only. It proves the Reliable Messaging Pair end to end: a
-  transactional enqueue → the outbox claimer publishes to Kafka → the inbox
-  consumer deduplicates → exactly one audit row, even after a forced redelivery.
+  transactional add → the outbox relay publishes to Kafka → the inbox consumer
+  deduplicates → exactly one audit row, even after a forced redelivery.
 - CI runs the same file in `kafka-e2e`; `npm run test:kafka:strict` with
   `KAFKA_BROKERS` and `KAFKA_TOPIC_PREFIX` exported is that exact check
   locally.

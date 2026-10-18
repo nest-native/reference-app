@@ -5,7 +5,6 @@ import {
   Logger,
   type OnApplicationBootstrap,
 } from '@nestjs/common';
-import { RabbitInboxConsumer } from '@nest-native/messaging/rabbitmq';
 import type { RecoveringChannelModel } from 'amqplib';
 import type { RabbitmqEnv } from '../../config/env';
 import { AuditLogService } from '../audit-log/audit-log.service';
@@ -15,6 +14,7 @@ import {
   type UserInvitedPayload,
 } from '../outbox/outbox.constants';
 import { InboxDeliveries } from './inbox-deliveries.service';
+import { RabbitInbox } from './rabbit-inbox';
 import { RABBITMQ_ENV } from './rabbitmq-connection.module';
 import { type Subscription, subscribe } from './rabbit-subscription';
 import {
@@ -26,11 +26,12 @@ import {
 /**
  * RabbitMQ-profile consumer for `user.invited` — the counterpart of the Kafka
  * profile's {@link UserInvitedConsumer}, writing the same audit row through the
- * same {@link userInvitedDelivered}. The library's {@link RabbitInboxConsumer}
- * dedups by the event id the outbox stamped on the message, runs the side
- * effect inside the dedup transaction, and settles the delivery itself: ack when
- * processed or a duplicate, dead-letter (with the reason in `x-error`) when the
- * payload can never be processed, requeue when anything else failed.
+ * same {@link userInvitedDelivered}. The {@link RabbitInbox} engine dedups by
+ * the message id the outbox transport stamped on the message, records it in the
+ * official inbox in the transaction that runs the side effect, and settles the
+ * delivery itself: ack when processed or a duplicate, dead-letter (with the
+ * reason in `x-error`) when the payload can never be processed, requeue when
+ * anything else failed.
  */
 @Injectable()
 export class UserInvitedRabbitConsumer
@@ -42,7 +43,7 @@ export class UserInvitedRabbitConsumer
   constructor(
     @Inject(RABBITMQ) private readonly rabbit: RecoveringChannelModel,
     @Inject(RABBITMQ_ENV) private readonly env: RabbitmqEnv,
-    @Inject(RabbitInboxConsumer) private readonly inbox: RabbitInboxConsumer,
+    @Inject(RabbitInbox) private readonly inbox: RabbitInbox,
     @Inject(AuditLogService) private readonly audit: AuditLogService,
     @Inject(InboxDeliveries) private readonly deliveries: InboxDeliveries,
   ) {}
@@ -53,12 +54,12 @@ export class UserInvitedRabbitConsumer
       USER_INVITED_QUEUE,
       async (message, { channel, deadLetterChannel }) => {
         const result = await this.inbox.consume<UserInvitedPayload>({
-          source: USER_INVITED_QUEUE.name,
+          consumer: USER_INVITED_QUEUE.name,
           channel,
           message,
           validate: isUserInvitedPayload,
-          // Synchronous, DB-only (the SQLite store's rule): a throw rolls the
-          // dedup row back with it, and the delivery is requeued.
+          // Synchronous, DB-only (a better-sqlite3 transaction's rule): a throw
+          // rolls the inbox record back with it, and the delivery is requeued.
           sideEffect: (invite) => {
             this.audit.record(userInvitedDelivered(invite));
           },

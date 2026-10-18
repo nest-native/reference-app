@@ -7,10 +7,9 @@ description: One-sitting tour of the nest-native reference app — module graph,
 # Architecture
 
 This is a single-process Nest application (plus one background worker
-process). It exists to demonstrate how all eight
+process). It exists to demonstrate how all seven
 [nest-native](https://github.com/nest-native) libraries —
 [`trpc`](https://github.com/nest-native/trpc),
-[`messaging`](https://github.com/nest-native/messaging),
 [`kafka`](https://github.com/nest-native/kafka),
 [`jobs`](https://github.com/nest-native/jobs),
 [`asyncapi`](https://github.com/nest-native/asyncapi),
@@ -18,7 +17,8 @@ process). It exists to demonstrate how all eight
 [`cache`](https://github.com/nest-native/cache), and
 [`lockout`](https://github.com/nest-native/lockout) —
 compose on the official [`@nestjs/drizzle`](https://docs.nestjs.com/data/drizzle)
-module under realistic backend pressure: feature modules, multi-tenant
+and [`@nestjs/outbox`](https://docs.nestjs.com/reliability/outbox) modules
+under realistic backend pressure: feature modules, multi-tenant
 context, cross-service transactions, post-commit side effects via a
 transactional outbox, deferred and scheduled work, a published event
 catalog, and a typed tRPC client.
@@ -66,9 +66,10 @@ otherwise have to answer from scratch:
   can't send the email inside the transaction (rollback → ghost email)
   and you can't send it from the request handler after the transaction
   either (process crashes → lost email). The transactional outbox is
-  the answer. Implementing it correctly means getting the claim
-  atomicity, idempotency, exponential backoff, and stuck-claim recovery
-  right. See [Outbox](#outbox) and [The worker process](#the-worker-process).
+  the answer, and NestJS ships one: the official `@nestjs/outbox` gets the
+  leases, the fencing, the retries with backoff and the dead letters
+  right. The app supplies the one piece it has no driver for, a store on
+  SQLite. See [Outbox](#outbox) and [The worker process](#the-worker-process).
 
 - **How do you keep the typed-client contract honest?** tRPC promises
   end-to-end type safety, but only if the generated `AppRouter` actually
@@ -107,11 +108,15 @@ concrete rather than designing in a vacuum.
               │   JobsModule.forRoot  +  RemindersModule         │
               │                                                  │
               │   ─ messaging profile (a broker env flips it) ─  │
-              │   MessagingModule.forRootAsync                   │
-              │     default:  InProcessOutboxModule              │
-              │     kafka:    KafkaModule.forRootAsync + the     │
+              │   OutboxModule.forRoot / forRootAsync            │
+              │     + SqliteOutboxStore (an AppModule provider)  │
+              │     default:  the local transport →              │
+              │               InProcessOutboxModule handlers     │
+              │     kafka:    KafkaOutboxTransport,              │
+              │               KafkaModule.forRootAsync + the     │
               │               UserInvited / TaskActivity inboxes │
-              │     rabbitmq: RabbitmqConnectionModule + the     │
+              │     rabbitmq: RabbitOutboxTransport,             │
+              │               RabbitmqConnectionModule + the     │
               │               RabbitmqInboxModule consumers      │
               │                                                  │
               │   OrganizationsModule                            │
@@ -140,11 +145,13 @@ chapter:
   `TrpcModule.forRoot<AppTrpcContext>({ path, autoSchemaFile,
   createContext })`.
 - [`src/app.module.ts`](https://github.com/nest-native/reference-app/blob/main/src/app.module.ts) →
-  `MessagingModule.forRootAsync({ … })` with the SQLite outbox/inbox stores,
-  and — only when `KAFKA_BROKERS` is set — `KafkaModule.forRootAsync({ … })`
-  plus the Kafka transport and inbox consumers; or — only when `RABBITMQ_URL`
-  is set — the app's RabbitMQ connection, `RabbitOutboxTransport`, and the
-  `RabbitInboxConsumer` subscribers in
+  `OutboxModule.forRoot({ … })` from the official `@nestjs/outbox` — or
+  `forRootAsync({ … })` when a broker transport needs its client — with the
+  app's `SqliteOutboxStore` registered next to it as a provider; and — only
+  when `KAFKA_BROKERS` is set — `KafkaModule.forRootAsync({ … })` plus the
+  app's `KafkaOutboxTransport` and the inbox consumers; or — only when
+  `RABBITMQ_URL` is set — the app's RabbitMQ connection,
+  `RabbitOutboxTransport`, and the `RabbitInbox` subscribers in
   [`src/modules/rabbitmq/`](https://github.com/nest-native/reference-app/blob/main/src/modules/rabbitmq).
   Same file, every profile.
 - [`src/app.module.ts`](https://github.com/nest-native/reference-app/blob/main/src/app.module.ts) →
@@ -353,7 +360,8 @@ inviteUser(input): Promise<Result> {
   2. insert  memberships     (membership)
   3. insert  projects        (project)
   4. insert  audit_events    ("user.invited")
-  5. insert  outbox_events   (topic: "user.invited", idempotency_key)
+  5. insert  outbox_messages (Outbox.add: topic "user.invited",
+                              header x-idempotency-key)
 }
 ```
 
@@ -393,46 +401,153 @@ code has to change when you switch.
 Three §7-mandatory tests in
 [`test/integration/invite-user.workflow.spec.ts`](https://github.com/nest-native/reference-app/blob/main/test/integration/invite-user.workflow.spec.ts):
 
-- **Happy path:** all five rows persisted; outbox row visible after commit;
-  worker tick processes it; `FakeEmailTransport` records the email.
+- **Happy path:** all five rows persisted; the outbox message visible
+  after commit; one relay run publishes it (deleting its row) and the
+  handler's inbox records it; `FakeEmailTransport` records the email once.
 - **Rollback safety:** force a throw between project insert and audit
   event; assert zero rows from this transaction persist; assert no email.
-- **Worker crash recovery:** seed an outbox row with `status='processing'`
-  and stale `claimed_at`; the next claimer tick re-claims it (under the
-  stuck-timeout), processes it exactly once, and a follow-up tick is a
-  no-op.
+- **Worker crash recovery:** lease the message to a relay that died. While
+  that lease lasts, a run claims nothing; once it has run out, the next
+  run claims the message and publishes it exactly once, and a follow-up
+  run is a no-op.
 
 ## Outbox
 
-Schema is at
-[`src/database/schema/outbox-events.ts`](https://github.com/nest-native/reference-app/blob/main/src/database/schema/outbox-events.ts)
-and matches brief §8: `pending | processing | completed | failed` status
-machine, partial-unique `idempotency_key`, `(status, available_at)` claim
-index, attempts/maxAttempts counters with backoff.
+The domain events run on the official
+[`@nestjs/outbox`](https://docs.nestjs.com/reliability/outbox) module. A
+service adds its message inside the transaction that writes the business
+rows, so both commit or neither does:
 
-The flow has three pieces:
+```ts
+@Transactional<TransactionalAdapterDrizzleOrm<AppDatabase>>({
+  behavior: 'immediate',           // it reads before it writes: see below
+})
+createTask(input: CreateTaskArgs): Promise<Task> {
+  const task = this.repo.create({ … });
+  this.outbox.add(this.db, {       // Outbox<AppDatabase>, this.db the CLS tx
+    topic: 'task.created',
+    payload,
+    key: `task:${org.id}:${task.id}`, // a task's events, in commit order
+    headers: { 'x-idempotency-key': `task.created:${org.id}:${task.id}` },
+  });
+  return task as unknown as Promise<Task>;
+}
+```
 
-| Piece | File | Job |
-| --- | --- | --- |
-| Producer | [`outbox-producer.service.ts`](https://github.com/nest-native/reference-app/blob/main/src/modules/outbox/outbox-producer.service.ts) | `enqueue({ topic, payload, idempotencyKey? })` — inserts a `pending` row inside the active tx |
-| Registry | [`outbox-registry.service.ts`](https://github.com/nest-native/reference-app/blob/main/src/modules/outbox/outbox-registry.service.ts) | `register(topic, handler)` — handler module init binds itself |
-| Claimer | [`outbox-claimer.service.ts`](https://github.com/nest-native/reference-app/blob/main/src/modules/outbox/outbox-claimer.service.ts) | `tick()` — atomic claim (pending OR stuck processing), dispatch, mark completed/retry/failed |
+The relay then claims committed messages under a lease, publishes them,
+deletes what it published, retries what failed with backoff (10 attempts,
+waits doubling from 1 s to at most 1 min, each jittered between half and
+all of that: 2 to 4 minutes in all), and moves what never succeeds — or
+what a handler rejects with `NonRetryableMessageError` — to a dead-letter
+table, where `OutboxDeadLetters` can list and requeue it. Each claim gets
+its own fencing token, so a relay that stalled past its lease cannot
+overwrite the work of the one that took over. A task's messages share an
+ordering key, so they are published in the order they committed, a later
+one held back while an earlier one is retried.
 
-The `user.invited` topic has exactly one handler
-([`user-invited.handler.ts`](https://github.com/nest-native/reference-app/blob/main/src/modules/outbox/user-invited.handler.ts))
-that delegates to `FakeEmailTransport`. In a real app, swap the transport
-for SES, Sendgrid, etc.
+The module ships stores for PostgreSQL and MySQL. On SQLite the app
+implements its two public storage contracts itself, in
+[`sqlite-outbox.store.ts`](https://github.com/nest-native/reference-app/blob/main/src/modules/outbox/sqlite-outbox.store.ts),
+on the tables in
+[`src/database/schema/outbox.ts`](https://github.com/nest-native/reference-app/blob/main/src/database/schema/outbox.ts)
+(migrated by drizzle-kit like every other table):
+
+| Table | Holds |
+| --- | --- |
+| `outbox_messages` | The messages not yet published: payload, headers, ordering key, times as epoch ms, attempts and their history, and the lease (`lease_owner`, `lease_until`). `seq` (AUTOINCREMENT) numbers them in commit order. |
+| `outbox_dead_letters` | Messages that ran out of attempts (`exhausted`) or were refused (`rejected`), with their failure history and their `seq`, so a requeued one goes back to its place in its key. |
+| `outbox_inbox` | Which consumer processed which message id: an insert-if-absent on `(consumer, message_id)`. |
+
+Every store method is synchronous, like better-sqlite3, so `Outbox.add()`
+and `OutboxInbox.processInTransaction()` stay synchronous inside the app's
+synchronous `@Transactional()` bodies. The store registers itself with the
+module's `OutboxStorage` in its constructor; `AppModule` provides it once,
+next to `OutboxModule`.
+
+- **Proof.** [`sqlite-outbox-store.contract.spec.ts`](https://github.com/nest-native/reference-app/blob/main/test/integration/sqlite-outbox-store.contract.spec.ts)
+  runs the module's own contract suites (`@nestjs/outbox/testing`) against
+  the store, on the app's real migrations — all but the three cases that
+  open a second transaction on the one connection.
+  [`sqlite-outbox-store.cross-process.spec.ts`](https://github.com/nest-native/reference-app/blob/main/test/integration/sqlite-outbox-store.cross-process.spec.ts)
+  takes two of those to a second process holding the write lock: keyed
+  messages numbered in commit order, whether the producer's transaction
+  took the lock at `BEGIN` or at its first write, and two deliveries of a
+  message meeting at the inbox key, after a commit and after a rollback. It
+  also shows a claim waiting for the lock. The third, producers and relays
+  racing over a key, is not repeated across processes; it rests on the
+  same single writer.
+- **Two processes, one file.** The API and the worker write the same SQLite
+  file. SQLite has a single writer, so `seq` follows commit order across
+  both processes with no lock per key, and the store's own multi-statement
+  transactions open with `BEGIN IMMEDIATE`: they wait for the other
+  process's lock instead of failing with `SQLITE_BUSY_SNAPSHOT`. The API's
+  producers read before they write (the project, the membership, the
+  invitee's email), so their `@Transactional()` methods ask for
+  `BEGIN IMMEDIATE` as well: a deferred transaction that has read fails at
+  once with `SQLITE_BUSY` when the worker holds the lock, where an
+  immediate one waits for it
+  ([`producers.cross-process.spec.ts`](https://github.com/nest-native/reference-app/blob/main/test/integration/producers.cross-process.spec.ts)).
+  The worker's handlers and inbox engines write first, and wait at that
+  write.
+- **Production stance.** One SQLite file on one host is this demo's setup.
+  The module's production checklist keeps the outbox on a database server
+  — a container's disk goes away with the container — and the
+  [Postgres recipe](#production-deployment-recipe) below swaps this store
+  for the module's `PostgresOutboxStore`.
+
+The consumers dedupe on the message id. In-process,
+[`user-invited.handler.ts`](https://github.com/nest-native/reference-app/blob/main/src/modules/outbox/user-invited.handler.ts)
+and [`activity.handler.ts`](https://github.com/nest-native/reference-app/blob/main/src/modules/outbox/activity.handler.ts)
+are `@OnOutboxMessage()` methods, each with an inbox under its consumer
+name; the activity handler records its inbox entry in the projection's own
+transaction (`ctx.processInTransaction()`), so a redelivery never writes a
+second feed row. Over a broker, the app's transports put the message id in
+`x-event-id` and the business key in `x-idempotency-key` (the wire contract
+in [`wire-contract.ts`](https://github.com/nest-native/reference-app/blob/main/src/modules/outbox/wire-contract.ts)),
+and the consumers' engines (`KafkaInbox`, `RabbitInbox`) record each
+delivery with `OutboxInbox.processInTransaction()` in the transaction that
+applies it. In a real app, swap `FakeEmailTransport` for SES, Sendgrid, etc.
+
+Nothing deduplicates a business key on the producer's side, so every
+transition is an event of its own: the feed keys its row on the event's
+business key and message id, and the assignment reminder its `uniqueKey`,
+so a task assigned back to an earlier assignee, or reopened and completed
+again, gets a row (and a reminder) each time. A transition that changes
+nothing — assigning a task to the user working on it, completing a done
+task — is refused with a 409 instead of being published twice. The inboxes
+grow by a record per message and consumer; a nightly schedule on the jobs
+library ([`inbox-prune.job.ts`](https://github.com/nest-native/reference-app/blob/main/src/modules/outbox/inbox-prune.job.ts))
+prunes the records older than 30 days with `OutboxInbox.prune()`, which
+nothing in the module calls for you.
+
+> Upgrading a database the app ran on before the official outbox: stop the
+> old worker first, then migrate. Migration 0008 carries the unpublished
+> events over with their ids, the events the old worker gave up on as dead
+> letters (`exhausted` or `rejected`, which `OutboxDeadLetters` lists and
+> requeues), and the consumers' inbox records with their names; 0009 drops
+> the old `outbox_events` and `inbox_events` tables, in the same
+> transaction. A worker still running the old code could publish a
+> carried-over event a second time. The Kafka and RabbitMQ consumers would
+> deduplicate it on their carried-over inboxes; the in-process handlers
+> would not, since the old ones kept no inbox, so its invite email would be
+> sent again and its feed row written again.
 
 ## The worker process
 
 [`scripts/start-worker.ts`](https://github.com/nest-native/reference-app/blob/main/scripts/start-worker.ts) boots a headless
-Nest application context, resolves `OutboxClaimer` from DI, and ticks on
-`OUTBOX_POLL_MS` (default 2s). `SIGTERM` and `SIGINT` abort an
-`AbortController` that interrupts the in-flight wait, lets the current
-tick drain, and closes the Nest container.
+Nest application context and runs the two queues side by side: it starts
+the outbox relay (`OutboxRelay.start()`), which polls on `OUTBOX_POLL_MS`
+(default 2s) and drains at once while batches come back full, and it runs
+the jobs loop from `@nest-native/jobs`. `AppModule` keeps the relay off in
+every process, so the API never publishes and the tests flush the outbox
+with `relay.runOnce()`.
 
-The loop body is exported as `runWorkerLoop(claimer, config)` so tests
-exercise it without spawning child processes.
+`SIGTERM` and `SIGINT` stop both: the relay stops claiming at once, and the
+jobs loop returns once the job it is running ends. Then the worker closes
+the Nest container, which waits for the relay's stop (`onModuleDestroy`) —
+in-flight publishes settle and the leases on messages it had not started
+are released — before the broker connections close
+(`onApplicationShutdown`).
 
 In production, run the API and the worker as two separate processes off the
 same image (see `docker-compose.yml`).
@@ -442,7 +557,7 @@ same image (see `docker-compose.yml`).
 | Path | What's here |
 | --- | --- |
 | `main.ts` | Nest bootstrap — listens on `PORT` |
-| `app.module.ts` | Root module: imports + ClsPluginTransactional wiring |
+| `app.module.ts` | Root module: imports + ClsPluginTransactional wiring, `OutboxModule` in each messaging profile, the `SqliteOutboxStore` provider |
 | `config/env.ts` | `loadEnv()` — single source of truth for env vars |
 | `database/` | `DatabaseModule` (DrizzleModule.forRoot wiring), schema, migrations |
 | `auth/` | JWT helpers, scrypt password helpers, `AuthService`, middleware, `AuthGuard` + `RolesGuard`/`@Roles`, `@CurrentUser`/`@CurrentOrganization` decorators, `AuthRouter` |
@@ -453,7 +568,9 @@ same image (see `docker-compose.yml`).
 | `modules/projects/` | Repo + service + tRPC router. `projects.list` / `.get` / `.create` |
 | `modules/memberships/` | Repo + the one registration of it, re-exported through `AuthModule` (consumed by onboarding, `RolesGuard`, and the task tenancy checks) |
 | `modules/audit-log/` | `AuditLogService.record()` |
-| `modules/outbox/` | Producer, claimer, registry, fake transport, `user.invited` handler, `outbox.constants.ts` |
+| `modules/outbox/` | `SqliteOutboxStore` (the official outbox's store on SQLite), the wire contract, `KafkaOutboxTransport`, the in-process `@OnOutboxMessage()` handlers and `FakeEmailTransport`, `outbox.constants.ts` |
+| `modules/inbox/` | The Kafka consumers, their `KafkaInbox` engine, and the read-side effects every profile shares (`TaskActivityProjections`, the invite audit) |
+| `modules/rabbitmq/` | The RabbitMQ profile: connection, topology, `RabbitOutboxTransport`, the `RabbitInbox` engine and its subscribers |
 | `modules/onboarding/` | `OrganizationOnboardingService` — the `@Transactional` workflow |
 | `trpc/` | `AppTrpcModule` (TrpcModule.forRoot wiring), `PingRouter`, `generate-types.ts` |
 | `@generated/server.ts` | Auto-generated from the routers (gitignored; regenerated by `npm run trpc:generate`) |
@@ -463,16 +580,22 @@ same image (see `docker-compose.yml`).
 | Path | Coverage |
 | --- | --- |
 | `test/integration/organizations.smoke.spec.ts` | Migration runs; `organizations` table queryable + unique constraint |
-| `test/integration/core-schema.spec.ts` | Insert + constraint behavior for the other five tables |
+| `test/integration/core-schema.spec.ts` | Insert + constraint behavior for the other four tables |
 | `test/integration/seed.spec.ts` | `seedDatabase` is idempotent; password hash is real scrypt |
 | `test/integration/auth-jwt.spec.ts` | JWT sign/verify roundtrip, tamper, expiry, wrong-secret, malformed, unsupported alg |
 | `test/integration/auth-password.spec.ts` | scrypt hash/verify positive + negative |
-| `test/integration/core-schema.spec.ts` | (also) outbox partial-unique on `idempotency_key` |
 | `test/integration/invite-user.workflow.spec.ts` | The three §7 tests (happy, rollback, crash recovery) |
-| `test/integration/outbox-worker.spec.ts` | Worker loop drains pending; honors abort; survives tick errors |
+| `test/integration/outbox-relay.spec.ts` | A started relay drains on its own timer and stops promptly; a failed claim is logged and the relay keeps polling; closing the app stops it |
+| `test/integration/sqlite-outbox-store.contract.spec.ts` | The official outbox's contract suites against `SqliteOutboxStore`, and batches and id lists past what one statement binds |
+| `test/integration/sqlite-outbox-store.cross-process.spec.ts` | A second process holding the write lock: a claim waits for it, keyed messages are numbered in commit order (lock taken at `BEGIN` or at the first write), and two deliveries of a message meet at the inbox key |
+| `test/integration/producers.cross-process.spec.ts` | The API's producers (`createTask`, `assignTask`, `completeTask`, `inviteUser`) wait for the worker's write lock instead of failing with `SQLITE_BUSY` |
+| `test/integration/worker-shutdown.spec.ts` | The worker in a child process: a `SIGTERM` during a long job stops the relay at once, lets the job finish, and exits cleanly |
+| `test/integration/rabbit-outbox-transport.spec.ts`, `rabbit-inbox.spec.ts` | The RabbitMQ transport and inbox engine on fake channels: confirms, returns and nacks; the 2^53 id, the `x-error` cap, a failed dead-letter copy, `retry.maxAttempts` |
+| `test/integration/inbox-prune.spec.ts` | The nightly inbox prune: its schedule, and an occurrence deleting records older than 30 days |
+| `test/integration/outbox-carry-over.spec.ts` | Migrations 0008–0009 carry the old outbox's unpublished events, its failed ones (as dead letters) and its inbox records over, then drop its tables |
 | `test/e2e/auth-flow.spec.ts` | Login flow over real HTTP; 401 on wrong password / no token / bad token |
 | `test/e2e/trpc-ping.smoke.spec.ts` | `GET /trpc/ping` returns 'pong'; `/health` returns ok |
-| `test/e2e/core-modules.spec.ts` | Authenticated flow over real HTTP across the three core routers |
+| `test/e2e/core-modules.spec.ts` | Authenticated flow over real HTTP across the three core routers; a task title no database stores is a 400, a transition that changes nothing a 409 |
 | `test/integration/tenant-authz.spec.ts` | Cross-org project/assignee are refused like missing ones, nothing committed; an invite cannot attach an existing account; login picks the oldest membership |
 | `test/e2e/roles-authz.spec.ts` | RBAC over real HTTP: viewer/member/admin limits, and a revoked membership blocking the next request — reads and the AI assistant included |
 | `test/integration/auth-context.spec.ts` | The guards' caller extractor: tRPC reads the procedure context, never the caller's input |
@@ -509,9 +632,27 @@ production deployment on Postgres:
 
    The transactional adapter needs no change: `TransactionalAdapterDrizzleOrm`
    detects the async driver on its own (`transactionMode: 'auto'`).
-4. Update the partial unique index on `outbox_events.idempotency_key` if
-   the drizzle-kit output for Postgres differs (it usually doesn't for
-   this shape).
+4. Swap the app's `SqliteOutboxStore` for the official
+   `PostgresOutboxStore` from `@nestjs/outbox/postgres`, which keeps its
+   tables in a schema of its own (`nest_outbox`), so the `outbox_*` tables
+   leave the Drizzle schema:
+
+   ```ts
+   {
+     provide: PostgresOutboxStore,
+     inject: [getDrizzleToken(), OutboxStorage],
+     useFactory: (db: Database, storage: OutboxStorage) =>
+       new PostgresOutboxStore({ executor: fromDrizzle(db) }, storage),
+   }
+   ```
+
+   Apply its migrations on deploy with `npx nest-outbox migrate` (and check
+   them in CI with `npx nest-outbox status`), or paste
+   `PostgresOutboxStore.migrationSql({ statementBreakpoints: true })` into a
+   custom drizzle-kit migration. Keep the server's default isolation level
+   at READ COMMITTED: the store refuses a stricter one at startup. On the
+   async driver, `outbox.add()` and `processInTransaction()` return
+   promises: await them before the transaction commits.
 5. Set `DATABASE_URL=postgres://…` in the environment. The Postgres
    sections in [`docker-compose.yml`](https://github.com/nest-native/reference-app/blob/main/docker-compose.yml) are commented
    for exactly this scenario.
@@ -543,12 +684,10 @@ add here:
 
 - **Not a CLI** (`create-nest-native-app`). Permanent maintenance cost,
   marginal value vs. a well-organized template repo.
-- **Not the home of a standalone outbox package.** The outbox pattern
-  lives here as an in-app module. A hypothetical `nest-outbox-native`
-  extraction (no such package exists today) is only worth considering
-  after three+ real apps independently rewrite the same shape — until
-  then, every adopter forks this module's code rather than depending on
-  a package.
+- **Not the home of an outbox package.** The outbox is the official
+  `@nestjs/outbox` module. The app ships only the SQLite store the module
+  has no driver for, written against its public store contract and proven
+  by its contract suites — not a fork of the module.
 - **Not a frontend.** The `client-smoke/` workspace is a typed-client
   smoke test, not a UI.
 - **Not multi-database / GraphQL / micro-frontends.** Resist scope creep.

@@ -3,12 +3,12 @@
 <p>
   <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/license-MIT-green.svg" alt="License" /></a>
   <img src="https://img.shields.io/badge/node-%3E%3D22.12-brightgreen.svg" alt="Node version" />
-  <img src="https://img.shields.io/badge/libraries-8%2F8-0f766e.svg" alt="All eight nest-native libraries" />
+  <img src="https://img.shields.io/badge/libraries-7%2F7-0f766e.svg" alt="All seven nest-native libraries" />
 </p>
 
-A production-shaped **multi-tenant work-tracking SaaS** — think a small Linear/Asana — that puts **all eight [nest-native](https://github.com/nest-native) libraries** under realistic backend pressure, on the official [`@nestjs/drizzle`](https://docs.nestjs.com/data/drizzle) module for persistence, and composes them the way a real product would: a typed API, reliable domain events, an event backbone, deferred background jobs, a documented event catalog, a streaming AI assistant, brute-force login lockout, and tag-invalidated read caching.
+A production-shaped **multi-tenant work-tracking SaaS** — think a small Linear/Asana — that puts **all seven [nest-native](https://github.com/nest-native) libraries** under realistic backend pressure, on the official [`@nestjs/drizzle`](https://docs.nestjs.com/data/drizzle) module for persistence and the official [`@nestjs/outbox`](https://docs.nestjs.com/reliability/outbox) module for reliable domain events, and composes them the way a real product would: a typed API, reliable domain events, an event backbone, deferred background jobs, a documented event catalog, a streaming AI assistant, brute-force login lockout, and tag-invalidated read caching.
 
-It is not a product. It **serves the libraries** — a credible demo a team could adapt, and a feedback loop: if something feels awkward here, that's signal to add API in a separate PR to the relevant library (that's how, for example, `MessagingModule.forRoot`'s `imports` option and `KafkaInboxConsumer`'s `dedupKey` argument came to exist).
+It is not a product. It **serves the libraries** — a credible demo a team could adapt, and a feedback loop: if something feels awkward here, that's signal to add API in a separate PR to the relevant library (that's how, for example, `MessagingModule.forRoot`'s `imports` option and `KafkaInboxConsumer`'s `dedupKey` argument came to exist in `@nest-native/messaging`, which the app ran on before the official outbox).
 
 ## The story
 
@@ -16,19 +16,18 @@ Follow one journey through the code and every library shows up where a real syst
 
 1. **An org invites a teammate.** `OrganizationOnboardingService.inviteUser()` writes the user + membership + project rows **and** enqueues a `user.invited` event — all in one transaction.
 2. **They open a project and work tasks.** Create → assign → complete a task; each writes the task row **and** emits a `task.created` / `task.assigned` / `task.completed` domain event **in the same transaction** (no lost events, no phantom events).
-3. **The events flow over a broker — Kafka or RabbitMQ.** A background claimer relays committed events to the broker; consumers turn them into an **activity feed** read-model — deduplicated, so an at-least-once redelivery never double-counts.
+3. **The events flow over a broker — Kafka or RabbitMQ.** A background relay publishes committed events to the broker; consumers turn them into an **activity feed** read-model — deduplicated, so an at-least-once redelivery never double-counts.
 4. **Assigning schedules a reminder.** The same delivery that projects `task.assigned` into the feed also enqueues a delayed **assignment-reminder job** — in the same transaction, keyed by the event's dedup key — and the worker fires it exactly once when due. The queue is a table in the same database; no Redis.
 5. **Nightly, nobody enqueues anything.** A `job_schedules` row declared at bootstrap makes the worker enqueue a **stale-task sweep** on a cron — it survives restarts, is safe across instances, and can be turned off at runtime without a deploy.
 5. **The event contracts are published.** An **AsyncAPI 3.0 catalog** at `/asyncapi` documents every event so another team could subscribe to your streams.
 6. **AI reads the activity.** A streaming **project assistant** turns a project's recent activity into a status update, token by token.
 
-## Eight libraries, eight chapters
+## Seven libraries, seven chapters
 
 | Library | Its job in the story | Where in the code |
 | --- | --- | --- |
 | [`@nest-native/trpc`](https://github.com/nest-native/trpc) | **The typed API** — task CRUD, project queries, the activity feed, all typesafe end-to-end; the superjson transformer keeps the feed's `Date`s real across the wire (the client link is *required* to match, at compile time), and failed validations reach the client as flattened Zod field errors (`error.data.zodError`); Nest enhancers compose over procedures the usual way — `@UseGuards(AuthGuard, RolesGuard)` plus per-procedure `@Roles(...)` metadata | `src/modules/*/**.router.ts` (`@Router`, `@Query`/`@Mutation`), `src/trpc/` (transformer, error formatting, response meta), generated `AppRouter` |
-| [`@nest-native/messaging`](https://github.com/nest-native/messaging) | **Reliable domain events** — the transactional outbox (emit in-tx) + idempotent inbox (dedup on consume) | `src/modules/{outbox,inbox,activity}/`, `OutboxProducer.enqueue` inside `@Transactional()` |
-| [`@nest-native/kafka`](https://github.com/nest-native/kafka) | **The event backbone** — the outbox relays through `KafkaOutboxTransport`; `@KafkaConsumer`s build read-models | the Kafka profile in `src/app.module.ts`, `src/modules/inbox/*.consumer.ts` |
+| [`@nest-native/kafka`](https://github.com/nest-native/kafka) | **The event backbone** — the official outbox relays through the app's `KafkaOutboxTransport`, over `@nest-native/kafka`'s producer; `@KafkaConsumer`s build read-models, recording each delivery in the outbox's inbox | the Kafka profile in `src/app.module.ts`, `src/modules/outbox/kafka-outbox.transport.ts`, `src/modules/inbox/*.consumer.ts` |
 | [`@nest-native/jobs`](https://github.com/nest-native/jobs) | **Deferred work** — the assignment reminder: enqueued in the same transaction as the `task.assigned` projection (`uniqueKey` = the event's dedup key), executed exactly once by the worker — **plus recurring work**: a DB-stored cron schedule drives the nightly stale-task sweep | `src/modules/reminders/`, `TaskAssignedProjection` in `src/modules/activity/`, `src/database/schema/jobs.ts` |
 | [`@nest-native/asyncapi`](https://github.com/nest-native/asyncapi) | **The event catalog** — an AsyncAPI 3.0 doc so other teams integrate with your streams | `src/modules/events-catalog/`, served at `/asyncapi` from `src/main.ts` |
 | [`@nest-native/ai-sdk`](https://github.com/nest-native/ai-sdk) | **AI over your data** — a streaming assistant that summarizes a project's activity | `src/modules/assistant/` (`@AiStream`), `POST /projects/:projectId/assistant` |
@@ -37,13 +36,15 @@ Follow one journey through the code and every library shows up where a real syst
 
 Underneath, the official [`@nestjs/drizzle`](https://docs.nestjs.com/data/drizzle) module registers the database (`src/database/`). Repositories are plain `@Injectable()` providers that take it with `@InjectDrizzle()`, or with `@InjectTransaction()` when they must join the caller's transaction, and every library reaches it through `getDrizzleToken()`. [`@nestjs-cls/transactional`](https://www.npmjs.com/package/@nestjs-cls/transactional) (with the official Drizzle adapter) ties the outbox write to the business write — its `transactionMode: 'auto'` runs the same `@Transactional()` code against better-sqlite3's synchronous driver locally and an async driver in production.
 
+The domain events run on the official [`@nestjs/outbox`](https://docs.nestjs.com/reliability/outbox) module (`src/modules/outbox/`): a service adds its message with `Outbox.add(tx, …)` inside its own transaction, the worker's relay publishes what committed (leases, retries with backoff, a dead-letter table), and every consumer keeps an inbox that drops redeliveries. The module ships stores for PostgreSQL and MySQL; on SQLite the app implements the module's public store contract itself (`SqliteOutboxStore`) and runs the module's own contract suites against it. One SQLite file shared by the API and the worker is this demo's setup — the module's production checklist keeps the outbox on a database server, which is what the Postgres recipe in [`docs/architecture.md`](docs/architecture.md#production-deployment-recipe) switches to.
+
 ## Three profiles, one codebase
 
 Everything above runs **with no infrastructure** by default:
 
-- **In-process (default)** — the outbox relays through an in-process transport and handlers build the activity feed synchronously. SQLite in a file, no broker. This is what the tests exercise.
-- **Kafka** — set `KAFKA_BROKERS` and the exact same domain code relays through `KafkaOutboxTransport` to a real cluster, with `@KafkaConsumer`s on the other side. The event bodies, dedup keys, and wire headers are identical; only the transport swaps.
-- **RabbitMQ** — set `RABBITMQ_URL` instead and the same code relays through `RabbitOutboxTransport` to one topic exchange: a row counts as sent only once the broker has acked it on a confirm channel and not returned it. `RabbitInboxConsumer`s run the same read-sides as the Kafka consumers, from quorum queues the app declares at startup — the task lifecycle's three topics share one queue, routed by key — and poison lands in a dead-letter queue with its reason. The two broker profiles are exclusive; set one.
+- **In-process (default)** — the outbox's built-in `local` transport runs the app's `@OnOutboxMessage()` handlers, each behind its own inbox, and they build the activity feed. SQLite in a file, no broker. This is what the tests exercise.
+- **Kafka** — set `KAFKA_BROKERS` and the exact same domain code relays through the app's `KafkaOutboxTransport` to a real cluster, with `@KafkaConsumer`s on the other side. The event bodies, dedup keys, and wire headers are identical; only the transport swaps.
+- **RabbitMQ** — set `RABBITMQ_URL` instead and the same code relays through the app's `RabbitOutboxTransport` to one topic exchange: a message counts as published only once the broker has acked it on a confirm channel and not returned it. Consumers on the app's `RabbitInbox` engine run the same read-sides as the Kafka consumers, from quorum queues the app declares at startup — the task lifecycle's three topics share one queue, routed by key — and poison lands in a dead-letter queue with its reason. The two broker profiles are exclusive; set one.
 
 ## Auth, tenancy, and roles
 
@@ -84,7 +85,7 @@ repeated logins always resolve the same tenant). The token carries no role.
 
 ## Getting started
 
-Requires **Node ≥ 22** (the AI SDK requires it).
+Requires **Node ≥ 22.12**: the AI SDK requires 22, and `@nestjs/drizzle` and `@nestjs/outbox`, ESM-only, load through `require(esm)`, unflagged from 22.12.
 
 ```bash
 nvm use
@@ -112,7 +113,7 @@ The seed creates `admin@acme.test` / `admin123!` with a starter org + project. T
 ```bash
 # 1. create + assign + complete a task (tRPC) → each emits a domain event in-tx
 #    (use the typed client in client-smoke/ for a real end-to-end example)
-# 2. the outbox worker relays events; the activity feed fills up:
+# 2. the worker's outbox relay publishes the events; the activity feed fills up:
 #    trpc: activity.list({ projectId })
 #    (assigning also scheduled a deferred reminder job — the worker fires it
 #     when due; tune with TASK_REMINDER_DELAY_MS)
@@ -127,7 +128,7 @@ curl -N -X POST localhost:3000/projects/1/assistant -H 'authorization: Bearer <j
 ```
 src/
   main.ts                  Nest bootstrap + AsyncApiModule.setup('/asyncapi', ...)
-  app.module.ts            Root module, ClsPluginTransactional, in-process/Kafka/RabbitMQ messaging profiles
+  app.module.ts            Root module, ClsPluginTransactional, OutboxModule in the in-process/Kafka/RabbitMQ messaging profiles
   config/env.ts            loadEnv() — single source of truth (incl. the optional kafka and rabbitmq blocks)
   database/                DrizzleModule wiring + schema (orgs/users/projects/tasks/activity/...) + migrations
   auth/                    scrypt passwords, HS256 JWT, AuthGuard + RolesGuard/@Roles, middleware; @nest-native/lockout login lockout (lockout.setup.ts)
@@ -138,14 +139,15 @@ src/
     tasks/                             the work-item domain — CRUD + lifecycle events
     activity/                          the event-fed activity feed read-model + router
     onboarding/                        OrganizationOnboardingService — the @Transactional invite flow
-    outbox/ inbox/                     the messaging pair (in-process handlers + Kafka consumers + the shared read-side effects)
-    rabbitmq/                          the RabbitMQ profile — connection, topology, RabbitInboxConsumer subscribers
+    outbox/                            SqliteOutboxStore (the official outbox's store on SQLite), the wire contract, the Kafka transport, the in-process handlers
+    inbox/                             the Kafka consumers and their inbox engine, the read-side effects every profile shares
+    rabbitmq/                          the RabbitMQ profile — connection, topology, RabbitOutboxTransport, the RabbitInbox engine and its subscribers
     reminders/                         the @nest-native/jobs chapter — the deferred assignment reminder + the scheduled stale-task sweep
     events-catalog/                    @nest-native/asyncapi event declarations
     assistant/                         @nest-native/ai-sdk streaming project assistant
     audit-log/ memberships/            supporting services
   trpc/                    TrpcModule.forRoot + routers + generated AppRouter
-test/integration/          real-DB tests (node:test) — task workflow, dedup, reminder job, asyncapi, AI stream
+test/integration/          real-DB tests (node:test) — task workflow, the outbox store's contract suites, dedup, reminder job, asyncapi, AI stream
 client-smoke/              typed tRPC client over the generated AppRouter
 docs/architecture.md       one-sitting tour
 ```
@@ -159,7 +161,7 @@ npm run docs:check    # README table/badge, package.json description, docs/ rost
 npm run ci            # typecheck, lint, complexity (≤15), docs:check, test:cov, security:audit, build
 ```
 
-Coverage here is **pragmatic, not 100%** — the 100% bar belongs to the libraries. The transactional workflow, the outbox worker, the inbox dedup, the reminder job's exactly-once scheduling and execution, the AsyncAPI catalog, the AI stream, and the login-lockout gate (fail N times → 429, even the right password is refused while locked), and cache coherence (mutations refresh cached reads long before TTL — tag invalidation, not expiry) all have explicit tests, as do the tenancy and role checks (cross-org project/assignee refused like a missing one with nothing committed; viewer/member/admin limits and revocation over real HTTP). CI runs on **Node 22**.
+Coverage here is **pragmatic, not 100%** — the 100% bar belongs to the libraries. The transactional workflow, the outbox relay, the app's SQLite outbox store (the official module's own contract suites, plus a second process holding the write lock), the inbox dedup, the reminder job's exactly-once scheduling and execution, the AsyncAPI catalog, the AI stream, and the login-lockout gate (fail N times → 429, even the right password is refused while locked), and cache coherence (mutations refresh cached reads long before TTL — tag invalidation, not expiry) all have explicit tests, as do the tenancy and role checks (cross-org project/assignee refused like a missing one with nothing committed; viewer/member/admin limits and revocation over real HTTP). CI runs on **Node 22**.
 
 Dedicated `rabbitmq-e2e` and `kafka-e2e` CI jobs run both broker profiles end
 to end against real brokers (a RabbitMQ 4 service container, the compose
@@ -189,7 +191,6 @@ One row per library, in chapter order:
 | Node.js | `>=22.12` |
 | NestJS | `11.x` |
 | `@nest-native/trpc` | `0.7.x` |
-| `@nest-native/messaging` | `0.8.x` |
 | `@nest-native/kafka` | `0.6.x` |
 | `@nest-native/jobs` | `0.5.x` |
 | `@nest-native/asyncapi` | `0.3.x` |
@@ -197,6 +198,7 @@ One row per library, in chapter order:
 | `@nest-native/cache` | `0.1.x` (on `@stalefree/core` `0.1.x`) |
 | `@nest-native/lockout` | `0.4.x` (on `@authlock/core` `0.4.x`) |
 | `@nestjs/drizzle` | `0.0.x` (the official module) |
+| `@nestjs/outbox` | `0.1.x` (the official module, on the app's own SQLite store) |
 | `drizzle-orm` | `0.45.x` (with `@nestjs-cls/transactional` `^4` and the official Drizzle adapter) |
 
 Every version in that table is checked against `package.json` by
@@ -207,7 +209,7 @@ the docs site still counts the old roster.
 The NestJS row is the lockfile's 11.x on purpose. Every library above publishes
 `^11 || ^12` and tests both ends of that range in its own CI (an `11 floor`
 leg pinned to the oldest installable 11, and a `12` leg); this app is the one
-place the eight compose, and it tracks the lockfile's 11 until the libraries'
+place the seven compose, and it tracks the lockfile's 11 until the libraries'
 shared flip trigger fires — NestJS 12 above 50% of `@nestjs/core` weekly
 downloads, or NestJS 11 no longer receiving patches — at which point the
 grouped `@nestjs/*` Dependabot PR is merged here as well.
@@ -216,7 +218,7 @@ grouped `@nestjs/*` Dependabot PR is merged here as well.
 
 - **Feel native.** Decorator-first, Nest modules + DI + enhancers, lifecycle hooks. No functional wrappers around library decorators.
 - **Stay honest.** Drizzle stays SQL-first; tRPC stays tRPC; the outbox is a real table, not magic.
-- **Every event has a home.** Emitted in-transaction (messaging), delivered over the backbone (kafka), documented (asyncapi), and consumed — including by the AI (ai-sdk).
+- **Every event has a home.** Emitted in-transaction (the official outbox), delivered over the backbone (kafka), documented (asyncapi), and consumed — including by the AI (ai-sdk).
 - **Library fixes ship upstream.** Find a rough edge in a nest-native library while building here? Open the fix as a separate PR to that library, get it merged, then resume.
 
 See [`docs/architecture.md`](docs/architecture.md) for the full tour and [CONTRIBUTING.md](CONTRIBUTING.md) for the design rules.

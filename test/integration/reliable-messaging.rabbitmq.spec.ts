@@ -6,6 +6,10 @@ import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { after, before, test } from 'node:test';
 import type { INestApplicationContext } from '@nestjs/common';
+// Static, unlike the env-reading imports in before(): under tsx an import() of
+// @nestjs/outbox loads a second copy, whose OutboxRelay is not the class src/
+// registered.
+import { OutboxRelay } from '@nestjs/outbox';
 import type { Channel, GetMessage, RecoveringChannelModel } from 'amqplib';
 import type { InboxDelivery } from '../../src/modules/rabbitmq/inbox-deliveries.service';
 
@@ -19,7 +23,7 @@ import type { InboxDelivery } from '../../src/modules/rabbitmq/inbox-deliveries.
 //   npm run test:rabbitmq   # this file, with RABBITMQ_URL set for you
 //   npm run infra:down
 //
-// It exercises the whole profile: a transactional enqueue → the claimer
+// It exercises the whole profile: a transactional add → the outbox relay
 // publishes on a confirm channel → the consumer writes ONE audit row → a forced
 // redelivery is recognised as a duplicate; the task lifecycle's three topics on
 // one queue, projected into the feed (and the assignment reminder scheduled);
@@ -37,7 +41,7 @@ const dbPath = join(
 let app: INestApplicationContext;
 let onboarding: import('../../src/modules/onboarding/organization-onboarding.service').OrganizationOnboardingService;
 let tasksService: import('../../src/modules/tasks/tasks.service').TasksService;
-let claimer: import('@nest-native/messaging').OutboxClaimer;
+let relay: OutboxRelay;
 let deliveries: import('../../src/modules/rabbitmq/inbox-deliveries.service').InboxDeliveries;
 let inspect: import('../../src/database/database').AppDatabase;
 let schema: typeof import('../../src/database/schema');
@@ -67,7 +71,6 @@ before(async () => {
   drizzleOps = await import('drizzle-orm');
   const { ContextIdFactory, NestFactory } = await import('@nestjs/core');
   const { getDrizzleToken } = await import('@nestjs/drizzle');
-  const { OutboxClaimer } = await import('@nest-native/messaging');
   const { loadEnv } = await import('../../src/config/env');
   const { InboxDeliveries } = await import(
     '../../src/modules/rabbitmq/inbox-deliveries.service'
@@ -103,7 +106,7 @@ before(async () => {
   });
   await app.init(); // declares the topology, then both consumers subscribe
   onboarding = app.get(OrganizationOnboardingService);
-  claimer = app.get(OutboxClaimer);
+  relay = app.get(OutboxRelay);
   deliveries = app.get(InboxDeliveries);
   inspect = app.get(getDrizzleToken());
   exchange = loadEnv().rabbitmq!.exchange;
@@ -180,12 +183,12 @@ const deliveredAuditCount = (subjectId: string) =>
 const inboxCount = (key: string) =>
   inspect
     .select()
-    .from(schema.inboxEvents)
-    .where(drizzleOps.eq(schema.inboxEvents.messageKey, key))
+    .from(schema.outboxInbox)
+    .where(drizzleOps.eq(schema.outboxInbox.messageId, key))
     .all().length;
 
 test(
-  'enqueue → confirmed publish → exactly one audit row; a redelivery is acked as a duplicate',
+  'add → confirmed publish → exactly one audit row; a redelivery is acked as a duplicate',
   { skip: !LIVE },
   async () => {
     const invited = await onboarding.inviteUser({
@@ -197,43 +200,46 @@ test(
     });
     const subjectId = String(invited.user.id);
     // The inbox dedups on the wire contract's first hit, `x-event-id` — the
-    // outbox row id the transport stamps on every message.
+    // outbox message id the transport stamps on every message.
     const eventId = invited.outboxEventId;
     const queue = topology.USER_INVITED_QUEUE.name;
 
     const processed = nextDelivery(
       (d) => d.queue === queue && d.dedupKey === eventId && d.outcome === 'processed',
     );
-    // The row completes only once the broker acked the message and did not
-    // return it.
-    const report = await claimer.tick();
+    // The message counts as published only once the broker acked it and did
+    // not return it.
+    const report = await relay.runOnce();
     assert.equal(report.claimed, 1);
-    assert.equal(report.completed, 1);
+    assert.equal(report.published, 1);
     await processed;
     assert.equal(deliveredAuditCount(subjectId), 1, 'consumer delivered once');
-    assert.equal(inboxCount(eventId), 1, 'one inbox dedup row');
+    assert.equal(inboxCount(eventId), 1, 'one inbox record');
 
-    // A redelivery looks exactly like the same message published again.
+    // A redelivery looks exactly like the same message published again. The
+    // published message's row is gone, so the copy is rebuilt from the invite.
     const duplicate = nextDelivery(
       (d) => d.queue === queue && d.dedupKey === eventId && d.outcome === 'duplicate',
     );
-    const [row] = inspect
-      .select()
-      .from(schema.outboxEvents)
-      .where(drizzleOps.eq(schema.outboxEvents.id, eventId))
-      .all();
-    probe.publish(exchange, 'user.invited', Buffer.from(JSON.stringify(row!.payload)), {
+    const payload = {
+      invitedEmail: 'rabbitmq.e2e@acme.test',
+      invitedUserId: invited.user.id,
+      invitedByUserId: seededAdminId,
+      orgId: seededOrgId,
+      projectId: invited.project.id,
+    };
+    probe.publish(exchange, 'user.invited', Buffer.from(JSON.stringify(payload)), {
       messageId: eventId,
       contentType: 'application/json',
       persistent: true,
       headers: {
         'x-event-id': eventId,
-        'x-idempotency-key': row!.idempotencyKey ?? eventId,
+        'x-idempotency-key': `user.invited:${seededOrgId}:${invited.user.id}:${invited.project.id}`,
       },
     });
     await duplicate;
     assert.equal(deliveredAuditCount(subjectId), 1, 'the duplicate wrote no second audit row');
-    assert.equal(inboxCount(eventId), 1, 'still exactly one inbox row');
+    assert.equal(inboxCount(eventId), 1, 'still exactly one inbox record');
   },
 );
 
@@ -271,8 +277,8 @@ test(
         }
       });
     });
-    const report = await claimer.tick();
-    assert.equal(report.completed, 3, 'created, assigned and completed published');
+    const report = await relay.runOnce();
+    assert.equal(report.published, 3, 'created, assigned and completed published');
     await Promise.race([
       threeProcessed,
       delay(20_000).then(() => {
@@ -368,13 +374,14 @@ test(
     );
 
     // The first publish may still meet the closing channel and fail; the
-    // claimer retries it, the way the worker loop would.
-    let completed = 0;
+    // relay retries it after its backoff (0.5 to 1 s), the way the worker's
+    // running relay would.
+    let published = 0;
     const deadline = Date.now() + 20_000;
-    while (completed < 2) {
-      completed += (await claimer.tick()).completed;
-      if (completed < 2) {
-        assert.ok(Date.now() < deadline, `only ${completed} of 2 events published after the reconnect`);
+    while (published < 2) {
+      published += (await relay.runOnce()).published;
+      if (published < 2) {
+        assert.ok(Date.now() < deadline, `only ${published} of 2 events published after the reconnect`);
         await delay(200);
       }
     }

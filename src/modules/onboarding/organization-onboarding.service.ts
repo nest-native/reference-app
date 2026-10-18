@@ -1,8 +1,8 @@
 import { ConflictException, Inject, Injectable } from '@nestjs/common';
 import { InjectTransaction, Transactional } from '@nestjs-cls/transactional';
+import type { TransactionalAdapterDrizzleOrm } from '@nestjs-cls/transactional-adapter-drizzle-orm';
 import { eq } from 'drizzle-orm';
-import { OutboxProducer } from '@nest-native/messaging';
-import type { SqliteOutboxStore } from '@nest-native/messaging/sqlite';
+import { Outbox, type OutboxMessage } from '@nestjs/outbox';
 import { hashPassword } from '../../auth/password';
 import type { AppDatabase } from '../../database/database';
 import {
@@ -17,6 +17,7 @@ import {
   OUTBOX_TOPIC_USER_INVITED,
   type UserInvitedPayload,
 } from '../outbox/outbox.constants';
+import { X_IDEMPOTENCY_KEY } from '../outbox/wire-contract';
 import { ProjectsRepository } from '../projects/projects.repository';
 
 export interface InviteUserInput {
@@ -32,6 +33,7 @@ export interface InviteUserResult {
   user: User;
   membership: Membership;
   project: Project;
+  /** The outbox message's id: the `x-event-id` consumers deduplicate on. */
   outboxEventId: string;
 }
 
@@ -43,11 +45,15 @@ export class OrganizationOnboardingService {
     private readonly memberships: MembershipsRepository,
     @Inject(ProjectsRepository) private readonly projects: ProjectsRepository,
     @Inject(AuditLogService) private readonly audit: AuditLogService,
-    // Typed with the SQLite store so `enqueue` returns the row synchronously
-    // (callable inside this synchronous @Transactional body).
-    @Inject(OutboxProducer)
-    private readonly outbox: OutboxProducer<SqliteOutboxStore>,
+    @Inject(Outbox) private readonly outbox: Outbox<AppDatabase>,
   ) {}
+
+  // scrypt is slow on purpose, so the password is hashed before the
+  // transaction opens: it takes SQLite's write lock at BEGIN, and the worker's
+  // writes would wait on the hash.
+  inviteUser(input: InviteUserInput): Promise<InviteUserResult> {
+    return this.invite(input, hashPassword(input.initialPassword));
+  }
 
   // Declared `Promise<InviteUserResult>` so callers can `await` naturally:
   // @Transactional() always returns a Promise even if the inner body is
@@ -56,9 +62,19 @@ export class OrganizationOnboardingService {
   // synchronous sqlite driver and runs the transaction in sync mode).
   // The cast on the return value below bridges the sync body to the Promise
   // signature the decorator imposes on the caller's view of the method.
-  @Transactional()
-  inviteUser(input: InviteUserInput): Promise<InviteUserResult> {
-    const user = this.createInvitee(input.email, input.initialPassword);
+  //
+  // BEGIN IMMEDIATE, because the invite reads the invitee's email before it
+  // writes, and SQLite fails a deferred transaction that has read at once
+  // (SQLITE_BUSY) when it needs the write lock the worker holds, instead of
+  // waiting for it (see TasksService).
+  @Transactional<TransactionalAdapterDrizzleOrm<AppDatabase>>({
+    behavior: 'immediate',
+  })
+  private invite(
+    input: InviteUserInput,
+    passwordHash: string,
+  ): Promise<InviteUserResult> {
+    const user = this.createInvitee(input.email, passwordHash);
     const membership = this.memberships.create({
       orgId: input.orgId,
       userId: user.id,
@@ -90,11 +106,16 @@ export class OrganizationOnboardingService {
       orgId: input.orgId,
       projectId: project.id,
     };
-    const event = this.outbox.enqueue({
+    // `add()` is typed Awaitable, but the app's SQLite store answers
+    // synchronously, so the message is already built (and its row written in
+    // this transaction) when it returns.
+    const event = this.outbox.add(this.db, {
       topic: OUTBOX_TOPIC_USER_INVITED,
       payload,
-      idempotencyKey: `user.invited:${input.orgId}:${user.id}:${project.id}`,
-    });
+      headers: {
+        [X_IDEMPOTENCY_KEY]: `user.invited:${input.orgId}:${user.id}:${project.id}`,
+      },
+    }) as OutboxMessage<UserInvitedPayload>;
 
     return { user, membership, project, outboxEventId: event.id } as unknown as Promise<InviteUserResult>;
   }
@@ -113,7 +134,7 @@ export class OrganizationOnboardingService {
    * that last signal needs a pending-invitation row the invitee accepts, which
    * is the shape a production app should reach for.
    */
-  private createInvitee(email: string, initialPassword: string): User {
+  private createInvitee(email: string, passwordHash: string): User {
     const existing = this.db
       .select()
       .from(users)
@@ -128,7 +149,7 @@ export class OrganizationOnboardingService {
       .insert(users)
       .values({
         email,
-        passwordHash: hashPassword(initialPassword),
+        passwordHash,
         createdAt: new Date().toISOString(),
       })
       .returning()

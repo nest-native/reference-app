@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { NestFactory } from '@nestjs/core';
 import { createTRPCClient, httpBatchLink } from '@trpc/client';
 import superjson from 'superjson';
-import { OutboxClaimer } from '@nest-native/messaging';
+import { OutboxRelay } from '@nestjs/outbox';
 import type { AppRouter } from '../src/@generated/server';
 import { seedDatabase } from '../scripts/seed';
 
@@ -72,7 +72,7 @@ async function main(): Promise<void> {
     assert.equal(me.email, 'admin@acme.test');
     console.warn(`users.me → #${me.id} ${me.email}`);
 
-    // 4. superjson Date round-trip — create a task, let the outbox claimer
+    // 4. superjson Date round-trip — create a task, let the outbox relay
     //    project it into the activity feed, then read the feed. `createdAt`
     //    arrives as a real `Date` instance (and is *typed* as one), because
     //    the link transformer above matches the server's `transformer`.
@@ -81,13 +81,13 @@ async function main(): Promise<void> {
       title: 'Prove the Date round-trip',
     });
     assert.equal(task.projectId, seeded.project.id);
-    await app.get(OutboxClaimer).tick();
+    await app.get(OutboxRelay).runOnce();
 
     const feed = await authClient.activity.list.query({
       projectId: seeded.project.id,
     });
     const entry = feed[0];
-    assert.ok(entry, 'expected a task.created activity row after the tick');
+    assert.ok(entry, 'expected a task.created activity row after the relay ran');
     const createdAt: Date = entry.createdAt; // inferred `Date`, not `string`
     assert.ok(createdAt instanceof Date, 'createdAt must be a real Date');
     assert.ok(Math.abs(Date.now() - createdAt.getTime()) < 60_000);

@@ -22,10 +22,11 @@ import {
  */
 
 /**
- * The wire headers every event carries, set by the Kafka outbox transport in
- * `@nest-native/messaging`. Both are always present, so both are required.
- * This is a transport concern (not an outbox payload contract), so the schema
- * lives here with the catalog rather than in `outbox.constants.ts`.
+ * The wire headers every event carries, set by the app's Kafka outbox
+ * transport (`src/modules/outbox/kafka-outbox.transport.ts`, after the wire
+ * contract in `wire-contract.ts`). Both are always present, so both are
+ * required. This is a transport concern (not an outbox payload contract), so
+ * the schema lives here with the catalog rather than in `outbox.constants.ts`.
  */
 export const eventHeadersSchema = z
   .object({
@@ -43,8 +44,9 @@ export const eventHeadersSchema = z
     description:
       'Wire headers set on every published event by the transactional-outbox ' +
       'Kafka transport. The Kafka message key is `x-idempotency-key` (falling ' +
-      'back to `x-event-id`), giving per-entity ordering and the value the ' +
-      "consumer's inbox deduplicates on.",
+      'back to `x-event-id`), so a partition keeps the events of one business ' +
+      "key (one event type, one entity) in order. The consumers' inboxes " +
+      'deduplicate on `x-event-id`.',
   });
 
 /** Message payload sources (name → Zod schema) referenced by the handlers. */

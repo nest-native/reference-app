@@ -7,7 +7,7 @@ import type { INestApplication } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import superjson from 'superjson';
 import type { SuperJSONResult } from 'superjson';
-import { OutboxClaimer } from '@nest-native/messaging';
+import { OutboxRelay } from '@nestjs/outbox';
 import { seedDatabase } from '../../scripts/seed';
 
 // Exercises the streaming AI project assistant end-to-end over HTTP with the
@@ -89,7 +89,7 @@ before(async () => {
   }).then((r) => r.json())) as TrpcSuccess;
   token = superjson.deserialize<{ token: string }>(login.result.data).token;
 
-  // A full task lifecycle enqueues 3 outbox events (created/assigned/completed).
+  // A full task lifecycle adds 3 outbox messages (created/assigned/completed).
   const created = await trpcMutation<{ id: number }>('tasks.create', {
     projectId,
     title: TASK_TITLE,
@@ -98,7 +98,7 @@ before(async () => {
   await trpcMutation('tasks.complete', { id: created.id });
 
   // Drain the outbox into the activity-feed read-model the assistant reads.
-  await app.get(OutboxClaimer).tick();
+  await app.get(OutboxRelay).runOnce();
 });
 
 after(async () => {

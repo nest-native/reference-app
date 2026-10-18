@@ -7,14 +7,14 @@ import {
   KafkaHeaders,
   KafkaMessage,
 } from '@nest-native/kafka';
-import { type WireHeaderValue } from '@nest-native/messaging';
-import { KafkaInboxConsumer } from '@nest-native/messaging/kafka';
 import { loadEnv } from '../../config/env';
 import {
   OUTBOX_TOPIC_TASK_ASSIGNED,
   OUTBOX_TOPIC_TASK_COMPLETED,
   OUTBOX_TOPIC_TASK_CREATED,
 } from '../outbox/outbox.constants';
+import type { WireHeaderValue } from '../outbox/wire-contract';
+import { KafkaInbox } from './kafka-inbox';
 import {
   type TaskActivityProjection,
   TaskActivityProjections,
@@ -35,18 +35,18 @@ const TASK_COMPLETED_TOPIC = `${TOPIC_PREFIX}${OUTBOX_TOPIC_TASK_COMPLETED}`;
  * Kafka-profile consumer that projects the task lifecycle topics into the
  * activity feed — the consumer half mirroring {@link UserInvitedConsumer}, but
  * grouping three topics on one class (no class-level topic; each `@KafkaHandler`
- * names its own). Every handler delegates to the library's {@link
- * KafkaInboxConsumer} engine, which runs broker work outside the dedup tx and
- * the exactly-once `sideEffect` (synchronous + DB-only) inside it. The side
- * effects are the shared {@link TaskActivityProjections} — the RabbitMQ
- * profile's consumer applies the very same ones. `dlqTopic`/`source` are
- * derived per topic exactly as the single-topic consumer derives them.
+ * names its own). Every handler delegates to the app's {@link KafkaInbox}
+ * engine, which runs broker work outside the dedup tx and the exactly-once
+ * `sideEffect` (synchronous + DB-only) inside it. The side effects are the
+ * shared {@link TaskActivityProjections} — the RabbitMQ profile's consumer
+ * applies the very same ones. `dlqTopic`/`consumer` are derived per topic
+ * exactly as the single-topic consumer derives them.
  */
 @Injectable()
 @KafkaConsumer(undefined, { groupId: GROUP_ID })
 export class TaskActivityConsumer {
   constructor(
-    @Inject(KafkaInboxConsumer) private readonly inbox: KafkaInboxConsumer,
+    @Inject(KafkaInbox) private readonly inbox: KafkaInbox,
     @Inject(TaskActivityProjections)
     private readonly projections: TaskActivityProjections,
   ) {}
@@ -89,12 +89,12 @@ export class TaskActivityConsumer {
     projection: TaskActivityProjection<T>,
   ): Promise<void> {
     await this.inbox.consume<T>({
-      source: `${topic}:${GROUP_ID}`,
+      consumer: `${topic}:${GROUP_ID}`,
       context,
       headers,
       payload,
       validate: (value): value is T => projection.validate(value),
-      sideEffect: (value) => projection.apply(value),
+      sideEffect: (value, dedupKey) => projection.apply(value, dedupKey),
       dlqTopic: `${topic}.DLQ`,
     });
   }

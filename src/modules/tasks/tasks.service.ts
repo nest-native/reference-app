@@ -1,12 +1,13 @@
 import {
+  ConflictException,
   Inject,
   Injectable,
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
-import { Transactional } from '@nestjs-cls/transactional';
-import { OutboxProducer } from '@nest-native/messaging';
-import type { SqliteOutboxStore } from '@nest-native/messaging/sqlite';
+import { InjectTransaction, Transactional } from '@nestjs-cls/transactional';
+import type { TransactionalAdapterDrizzleOrm } from '@nestjs-cls/transactional-adapter-drizzle-orm';
+import { Outbox } from '@nestjs/outbox';
 import type {
   CurrentOrganizationContext,
   CurrentUserContext,
@@ -15,6 +16,7 @@ import {
   CURRENT_ORGANIZATION,
   CURRENT_USER,
 } from '../../context/request-context.module';
+import type { AppDatabase } from '../../database/database';
 import type { Task } from '../../database/schema';
 import { MembershipsRepository } from '../memberships/memberships.repository';
 import { ProjectsRepository } from '../projects/projects.repository';
@@ -26,6 +28,7 @@ import {
   type TaskCompletedPayload,
   type TaskCreatedPayload,
 } from '../outbox/outbox.constants';
+import { X_IDEMPOTENCY_KEY } from '../outbox/wire-contract';
 import { TasksRepository } from './tasks.repository';
 
 export interface CreateTaskArgs {
@@ -49,19 +52,32 @@ export class TasksService {
     private readonly currentUser: CurrentUserContext | null,
     @Inject(CURRENT_ORGANIZATION)
     private readonly currentOrg: CurrentOrganizationContext | null,
-    // Typed with the SQLite store so `enqueue` returns the row synchronously —
-    // callable inside these synchronous @Transactional bodies (see onboarding).
-    @Inject(OutboxProducer)
-    private readonly outbox: OutboxProducer<SqliteOutboxStore>,
+    @Inject(Outbox) private readonly outbox: Outbox<AppDatabase>,
+    @InjectTransaction() private readonly db: AppDatabase,
   ) {}
 
   // Each mutation is a single transaction: the row write AND the matching
-  // outbox event commit atomically (the dual-write guarantee). The claimer then
-  // relays the event to the activity feed. The @Transactional() cast bridges the
-  // synchronous better-sqlite3 body to the Promise signature the decorator
-  // imposes on callers — the same pattern as OrganizationOnboardingService.
+  // outbox message commit atomically (the dual-write guarantee). The relay then
+  // publishes the message to the activity feed. `outbox.add()` runs
+  // synchronously, because the app's SQLite store does: the row is part of this
+  // better-sqlite3 transaction. The @Transactional() cast bridges the
+  // synchronous body to the Promise signature the decorator imposes on
+  // callers — the same pattern as OrganizationOnboardingService.
+  //
+  // Each one reads before it writes, so each opens with BEGIN IMMEDIATE. The
+  // worker writes the same file from its own process, and SQLite cannot make a
+  // deferred transaction that has read wait for the write lock: it fails at
+  // once, with SQLITE_BUSY (SQLITE_BUSY_SNAPSHOT when the worker has committed
+  // meanwhile). An immediate one takes the lock at BEGIN, waiting out the busy
+  // timeout like any writer.
+  //
+  // A task's messages share one ordering key, so the relay publishes them in
+  // the order they committed and holds the later ones back while an earlier
+  // one is retried.
 
-  @Transactional()
+  @Transactional<TransactionalAdapterDrizzleOrm<AppDatabase>>({
+    behavior: 'immediate',
+  })
   createTask(input: CreateTaskArgs): Promise<Task> {
     const org = this.requireOrg();
     const user = this.requireUser();
@@ -86,16 +102,21 @@ export class TasksService {
       title: task.title,
       createdBy: user.id,
     };
-    this.outbox.enqueue({
+    this.outbox.add(this.db, {
       topic: OUTBOX_TOPIC_TASK_CREATED,
       payload,
-      idempotencyKey: `${OUTBOX_TOPIC_TASK_CREATED}:${org.id}:${task.id}`,
+      key: taskKey(task),
+      headers: {
+        [X_IDEMPOTENCY_KEY]: `${OUTBOX_TOPIC_TASK_CREATED}:${org.id}:${task.id}`,
+      },
     });
 
     return task as unknown as Promise<Task>;
   }
 
-  @Transactional()
+  @Transactional<TransactionalAdapterDrizzleOrm<AppDatabase>>({
+    behavior: 'immediate',
+  })
   assignTask(input: AssignTaskArgs): Promise<Task> {
     const org = this.requireOrg();
     const user = this.requireUser();
@@ -105,6 +126,18 @@ export class TasksService {
     if (!this.memberships.findByOrgAndUser(org.id, input.assigneeId)) {
       throw new NotFoundException(
         `User ${input.assigneeId} is not a member of this organization`,
+      );
+    }
+    // Every assignment is an event of its own: the feed gives each one a row
+    // and a reminder, a task assigned back to an earlier assignee included. One
+    // that changes nothing is refused rather than published twice.
+    const current = this.repo.findById(org.id, input.id);
+    if (
+      current?.status === 'in_progress' &&
+      current.assigneeId === input.assigneeId
+    ) {
+      throw new ConflictException(
+        `Task ${input.id} is already assigned to user ${input.assigneeId}`,
       );
     }
     const task = this.repo.assign(org.id, input.id, input.assigneeId);
@@ -117,19 +150,30 @@ export class TasksService {
       assigneeId: input.assigneeId,
       assignedBy: user.id,
     };
-    this.outbox.enqueue({
+    this.outbox.add(this.db, {
       topic: OUTBOX_TOPIC_TASK_ASSIGNED,
       payload,
-      idempotencyKey: `${OUTBOX_TOPIC_TASK_ASSIGNED}:${org.id}:${task.id}:${input.assigneeId}`,
+      key: taskKey(task),
+      headers: {
+        [X_IDEMPOTENCY_KEY]: `${OUTBOX_TOPIC_TASK_ASSIGNED}:${org.id}:${task.id}:${input.assigneeId}`,
+      },
     });
 
     return task as unknown as Promise<Task>;
   }
 
-  @Transactional()
+  @Transactional<TransactionalAdapterDrizzleOrm<AppDatabase>>({
+    behavior: 'immediate',
+  })
   completeTask(id: number): Promise<Task> {
     const org = this.requireOrg();
     const user = this.requireUser();
+    // Completing a task that is done already changes nothing: refused, not
+    // published as a second task.completed. A reopened (reassigned) task can
+    // be completed again.
+    if (this.repo.findById(org.id, id)?.status === 'done') {
+      throw new ConflictException(`Task ${id} is already done`);
+    }
     const task = this.repo.complete(org.id, id);
     if (!task) throw new NotFoundException(`Task ${id} not found`);
 
@@ -139,10 +183,13 @@ export class TasksService {
       projectId: task.projectId,
       completedBy: user.id,
     };
-    this.outbox.enqueue({
+    this.outbox.add(this.db, {
       topic: OUTBOX_TOPIC_TASK_COMPLETED,
       payload,
-      idempotencyKey: `${OUTBOX_TOPIC_TASK_COMPLETED}:${org.id}:${task.id}`,
+      key: taskKey(task),
+      headers: {
+        [X_IDEMPOTENCY_KEY]: `${OUTBOX_TOPIC_TASK_COMPLETED}:${org.id}:${task.id}`,
+      },
     });
 
     return task as unknown as Promise<Task>;
@@ -171,4 +218,9 @@ export class TasksService {
     if (!this.currentUser) throw new UnauthorizedException();
     return this.currentUser;
   }
+}
+
+/** The ordering key a task's lifecycle messages share. */
+function taskKey(task: Task): string {
+  return `task:${task.orgId}:${task.id}`;
 }

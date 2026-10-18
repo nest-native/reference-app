@@ -1,17 +1,14 @@
 import { strict as assert } from 'node:assert';
-import { randomUUID } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, test } from 'node:test';
 import Database from 'better-sqlite3';
-import { eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/better-sqlite3';
 import { migrate } from 'drizzle-orm/better-sqlite3/migrator';
 import {
   auditEvents,
   memberships,
   organizations,
-  outboxEvents,
   projects,
   schema,
   users,
@@ -178,83 +175,4 @@ test('audit_events: stores JSON metadata and round-trips it', () => {
     .all();
 
   assert.deepEqual(event.metadata, metadata);
-});
-
-test('outbox_events: defaults attempts/maxAttempts and round-trips payload', () => {
-  const payload = { topic: 'user.invited', email: 'invitee@example.test' };
-  const [event] = db
-    .insert(outboxEvents)
-    .values({
-      id: randomUUID(),
-      topic: 'user.invited',
-      payload,
-      status: 'pending',
-      availableAt: nowIso(),
-      createdAt: nowIso(),
-    })
-    .returning()
-    .all();
-
-  assert.equal(event.status, 'pending');
-  assert.equal(event.attempts, 0);
-  assert.equal(event.maxAttempts, 10);
-  assert.deepEqual(event.payload, payload);
-});
-
-test('outbox_events: idempotency_key is unique when set, multiple NULLs allowed', () => {
-  db.insert(outboxEvents)
-    .values({
-      id: randomUUID(),
-      topic: 'noop',
-      payload: {},
-      status: 'pending',
-      availableAt: nowIso(),
-      createdAt: nowIso(),
-    })
-    .run();
-  db.insert(outboxEvents)
-    .values({
-      id: randomUUID(),
-      topic: 'noop',
-      payload: {},
-      status: 'pending',
-      availableAt: nowIso(),
-      createdAt: nowIso(),
-    })
-    .run();
-
-  const idemKey = 'idem-abc';
-  db.insert(outboxEvents)
-    .values({
-      id: randomUUID(),
-      topic: 'user.invited',
-      payload: {},
-      status: 'pending',
-      idempotencyKey: idemKey,
-      availableAt: nowIso(),
-      createdAt: nowIso(),
-    })
-    .run();
-
-  assert.throws(() =>
-    db
-      .insert(outboxEvents)
-      .values({
-        id: randomUUID(),
-        topic: 'user.invited',
-        payload: {},
-        status: 'pending',
-        idempotencyKey: idemKey,
-        availableAt: nowIso(),
-        createdAt: nowIso(),
-      })
-      .run(),
-  );
-
-  const withKey = db
-    .select()
-    .from(outboxEvents)
-    .where(eq(outboxEvents.idempotencyKey, idemKey))
-    .all();
-  assert.equal(withKey.length, 1);
 });

@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { after, before, test } from 'node:test';
 import type { INestApplication } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
-import { OutboxClaimer } from '@nest-native/messaging';
+import { OutboxRelay } from '@nestjs/outbox';
 import superjson from 'superjson';
 import type { SuperJSONResult } from 'superjson';
 import { seedDatabase } from '../../scripts/seed';
@@ -106,7 +106,7 @@ test('activity.list refreshes when the projection writes (write-site invalidatio
 
   const before = await call<Array<{ id: number }>>('activity.list', { projectId });
 
-  // A task mutation emits a domain event; the claimer tick (tests drive the
+  // A task mutation emits a domain event; one relay run (tests drive the
   // relay manually, the repo convention) runs the in-process handler, which
   // writes the activity row — and ActivityService.record invalidates the
   // project's feed tag at that write site.
@@ -114,7 +114,7 @@ test('activity.list refreshes when the projection writes (write-site invalidatio
     projectId,
     title: 'Cache invalidation task',
   });
-  await app.get(OutboxClaimer).tick();
+  await app.get(OutboxRelay).runOnce();
 
   // Far below the 10-minute TTL — only tag invalidation can make this fresh.
   const after_ = await call<Array<{ id: number }>>('activity.list', { projectId });

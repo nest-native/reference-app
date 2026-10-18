@@ -9,19 +9,23 @@ import { ActivityService } from './activity.service';
 import { taskAssignedActivity } from './task-activity.projection';
 
 /**
- * The one place a `task.assigned` delivery is applied — shared by the
- * in-process {@link import('../outbox/activity.handler').ActivityHandler} and
- * the Kafka {@link import('../inbox/task-activity.consumer').TaskActivityConsumer}
- * — so the feed row and the deferred assignment-reminder job always commit (or
- * roll back) together:
+ * The one place a `task.assigned` delivery is applied — shared, through
+ * {@link import('../inbox/task-activity.projections').TaskActivityProjections},
+ * by the in-process {@link import('../outbox/activity.handler').ActivityHandler}
+ * and the Kafka and RabbitMQ consumers — so the feed row and the deferred
+ * assignment-reminder job always commit (or roll back) together:
  *
- *   - Under the Kafka profile the inbox's `runOnce` transaction is already
- *     open; `@Transactional()` (propagation REQUIRED) joins it, so the dedup
- *     row, the feed row, and the job row are one atomic commit.
- *   - Under the in-process profile there is no ambient transaction; the
- *     decorator opens one around the pair.
+ *   - Delivered, it runs inside the transaction that records the delivery in
+ *     the consumer's inbox (`processInTransaction()`); `@Transactional()`
+ *     (propagation REQUIRED) joins it, so the inbox record, the feed row, and
+ *     the job row are one atomic commit.
+ *   - Called on its own, with no ambient transaction, the decorator opens one
+ *     around the pair.
  *
- * Redelivery can never schedule a second reminder, via two independent layers:
+ * Each assignment gets its own reminder: the dedup key carries the event's
+ * message id, so a task assigned back to an earlier assignee is reminded again.
+ * Past the consumer's inbox, redelivery of one event can never schedule a
+ * second reminder, via two independent layers:
  *
  *   1. The feed's `(org_id, dedup_key)` unique index — `record` returns
  *      `undefined` for an already-projected event and the enqueue is skipped
@@ -48,8 +52,8 @@ export class TaskAssignedProjection {
   // better-sqlite3 body runs synchronously (so it is also safe inside the
   // inbox's synchronous dedup transaction, where it simply joins).
   @Transactional()
-  apply(payload: TaskAssignedPayload): Promise<void> {
-    const activity = taskAssignedActivity(payload);
+  apply(payload: TaskAssignedPayload, eventId: string): Promise<void> {
+    const activity = taskAssignedActivity(payload, eventId);
     const inserted = this.activity.record(activity);
     if (inserted) {
       this.jobs.enqueue({

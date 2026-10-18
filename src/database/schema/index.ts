@@ -1,11 +1,10 @@
 import { activityEvents } from './activity';
 import { auditEvents } from './audit-events';
-import { inboxEvents } from './inbox-events';
 import { jobs, jobSchedules } from './jobs';
 import { lockoutAttempts } from './lockout-attempts';
 import { memberships } from './memberships';
 import { organizations } from './organizations';
-import { outboxEvents } from './outbox-events';
+import { outboxDeadLetters, outboxInbox, outboxMessages } from './outbox';
 import { projects } from './projects';
 import { tasks } from './tasks';
 import { users } from './users';
@@ -18,8 +17,9 @@ export const schema = {
   tasks,
   activityEvents,
   auditEvents,
-  outboxEvents,
-  inboxEvents,
+  outboxMessages,
+  outboxDeadLetters,
+  outboxInbox,
   jobs,
   jobSchedules,
   lockoutAttempts,
@@ -28,20 +28,19 @@ export const schema = {
 export {
   activityEvents,
   auditEvents,
-  inboxEvents,
   jobs,
   jobSchedules,
   lockoutAttempts,
   memberships,
   organizations,
-  outboxEvents,
+  outboxDeadLetters,
+  outboxInbox,
+  outboxMessages,
   projects,
   tasks,
   users,
 };
 export type { ActivityEvent, NewActivityEvent } from './activity';
-export type { InboxEvent, InboxStatus, NewInboxEvent } from './inbox-events';
-export { INBOX_STATUSES } from './inbox-events';
 export type { AuditEvent, NewAuditEvent } from './audit-events';
 export type {
   Job,
@@ -59,8 +58,11 @@ export type {
 } from './memberships';
 export { MEMBERSHIP_ROLES } from './memberships';
 export type { NewOrganization, Organization } from './organizations';
-export type { NewOutboxEvent, OutboxEvent, OutboxStatus } from './outbox-events';
-export { OUTBOX_STATUSES } from './outbox-events';
+export type {
+  OutboxDeadLetterRow,
+  OutboxInboxRow,
+  OutboxMessageRow,
+} from './outbox';
 export type { NewProject, Project } from './projects';
 export type { NewTask, Task, TaskStatus } from './tasks';
 export { TASK_STATUSES } from './tasks';

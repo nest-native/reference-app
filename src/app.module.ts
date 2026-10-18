@@ -6,16 +6,13 @@ import { getDrizzleToken } from '@nestjs/drizzle';
 import { JobsModule } from '@nest-native/jobs';
 import { SqliteJobStore, SqliteScheduleStore } from '@nest-native/jobs/sqlite';
 import { KafkaModule, KafkaProducerService } from '@nest-native/kafka';
-import { MessagingModule } from '@nest-native/messaging';
-import {
-  InProcessOutboxTransport,
-  OutboxRegistry,
-} from '@nest-native/messaging/in-process';
-import { KafkaOutboxTransport } from '@nest-native/messaging/kafka';
-import { RabbitOutboxTransport } from '@nest-native/messaging/rabbitmq';
-import { SqliteInboxStore, SqliteOutboxStore } from '@nest-native/messaging/sqlite';
+import { OutboxModule, type OutboxModuleOptions } from '@nestjs/outbox';
 import type { RecoveringChannelModel } from 'amqplib';
-import { loadEnv, type RabbitmqEnv } from './config/env';
+import {
+  loadEnv,
+  OUTBOX_PUBLISH_TIMEOUT_MS,
+  type RabbitmqEnv,
+} from './config/env';
 import { AuthModule } from './auth/auth.module';
 import { RequestContextModule } from './context/request-context.module';
 import { DatabaseModule } from './database/database.module';
@@ -28,9 +25,16 @@ import { TaskActivityInboxModule } from './modules/inbox/task-activity-inbox.mod
 import { TASK_SUMMARY_REPLY_TOPIC } from './modules/task-summary/task-summary.contract';
 import { TaskSummaryModule } from './modules/task-summary/task-summary.module';
 import { UserInvitedInboxModule } from './modules/inbox/user-invited-inbox.module';
+import {
+  InboxPruneHandler,
+  InboxPruneScheduleSetup,
+} from './modules/outbox/inbox-prune.job';
 import { InProcessOutboxModule } from './modules/outbox/in-process-outbox.module';
+import { KafkaOutboxTransport } from './modules/outbox/kafka-outbox.transport';
+import { sqliteOutboxStoreProvider } from './modules/outbox/sqlite-outbox.store';
 import { RabbitmqConnectionModule } from './modules/rabbitmq/rabbitmq-connection.module';
 import { RabbitmqInboxModule } from './modules/rabbitmq/rabbitmq-inbox.module';
+import { RabbitOutboxTransport } from './modules/rabbitmq/rabbit-outbox.transport';
 import { RABBITMQ } from './modules/rabbitmq/rabbitmq.topology';
 import { OnboardingModule } from './modules/onboarding/onboarding.module';
 import { RemindersModule } from './modules/reminders/reminders.module';
@@ -41,40 +45,50 @@ import { UsersModule } from './modules/users/users.module';
 import { AppTrpcModule } from './trpc/trpc.module';
 import { AppCacheModule } from './cache/cache.setup';
 
-// Reliable-messaging wiring, now built on `@nest-native/messaging`. Kafka is an
-// opt-in profile: with KAFKA_BROKERS unset, the engine's claimer publishes
-// through the library's in-process transport (registry → FakeEmailTransport) and the
-// inbox dedup primitive is available for the hermetic test — byte-for-byte the
-// app's pre-Kafka behaviour. With KAFKA_BROKERS set, the global KafkaModule comes
-// online, the claimer publishes through the library's Kafka transport, and the
-// UserInvitedConsumer subscribes. RABBITMQ_URL is the third profile, and the
-// same shape: the claimer publishes through the library's RabbitMQ transport and
-// the RabbitMQ consumers run the same read-sides. The two broker profiles are
-// mutually exclusive (loadEnv refuses both). @nestjs/drizzle registers the
-// database globally, so the engine resolves it from `getDrizzleToken()` directly.
-const { kafka: kafkaEnv, rabbitmq: rabbitmqEnv } = loadEnv();
+// Reliable messaging runs on the official `@nestjs/outbox`, in three profiles
+// that share the producers, the store and the read-sides. With no broker
+// configured, the outbox's built-in `local` transport runs the in-process
+// `@OnOutboxMessage()` handlers (FakeEmailTransport, the activity feed). With
+// KAFKA_BROKERS set, the global KafkaModule comes online, the outbox publishes
+// through the app's KafkaOutboxTransport, and the Kafka consumers record their
+// deliveries in the outbox's inbox. RABBITMQ_URL is the third profile, the same
+// shape over the app's RabbitOutboxTransport and RabbitMQ consumers. The two
+// broker profiles are mutually exclusive (loadEnv refuses both). Every profile
+// keeps the messages and the inboxes in the app's SQLite database, through
+// SqliteOutboxStore, registered once below.
+const {
+  kafka: kafkaEnv,
+  rabbitmq: rabbitmqEnv,
+  outbox: outboxEnv,
+} = loadEnv();
 const drizzleInstanceToken = getDrizzleToken();
+
+// The relay is off in every process this module boots: scripts/start-worker.ts
+// starts it (one worker drains the outbox and the jobs queue), and the tests
+// flush it with runOnce(). publishTimeout bounds a publish, a broker's confirm
+// included, and has to stay below the lease (OUTBOX_STUCK_TIMEOUT_MS, which
+// loadEnv() checks). The retry budget keeps the app's earlier one: 10
+// attempts, waits from 1 s doubling to at most 1 min. With the module's equal
+// jitter (each wait between half and all of that), a message is dead-lettered
+// 2 to 4 minutes after its first failure; the module's default (20 attempts,
+// up to 5 min apart) keeps retrying for 30 to 60 minutes.
+const outboxOptions = {
+  relay: {
+    enabled: false,
+    pollInterval: outboxEnv.pollIntervalMs,
+    batchSize: outboxEnv.batchSize,
+    lease: outboxEnv.stuckTimeoutMs,
+    publishTimeout: OUTBOX_PUBLISH_TIMEOUT_MS,
+  },
+  retry: { attempts: 10, backoff: { delay: '1s', maxDelay: '1m' } },
+} satisfies OutboxModuleOptions;
 
 function messagingImports(): NonNullable<ModuleMetadata['imports']> {
   if (rabbitmqEnv?.enabled) {
     return rabbitmqMessagingImports(rabbitmqEnv);
   }
   if (!kafkaEnv?.enabled) {
-    return [
-      InProcessOutboxModule,
-      MessagingModule.forRootAsync({
-        drizzleInstanceToken,
-        outboxStore: new SqliteOutboxStore(),
-        inboxStore: new SqliteInboxStore(),
-        imports: [InProcessOutboxModule],
-        inject: [OutboxRegistry],
-        // `useTransport` is typed `(...args: unknown[]) => ...` (unlike Nest's
-        // `useFactory: (...args: any[]) => T`), so a factory with typed params is
-        // not assignable under strictFunctionTypes — narrow from unknown here.
-        useTransport: (registry) =>
-          new InProcessOutboxTransport(registry as OutboxRegistry),
-      }),
-    ];
+    return [InProcessOutboxModule, OutboxModule.forRoot(outboxOptions)];
   }
   return [
     KafkaModule.forRootAsync({
@@ -85,7 +99,7 @@ function messagingImports(): NonNullable<ModuleMetadata['imports']> {
         // Idempotent producer + acks=all: the outbox already gives us
         // at-least-once; idempotence keeps a producer retry from duplicating a
         // partition write, and acks=all (-1) waits for the full ISR before the
-        // claimer marks the row completed. These are the kafkajs-style keys.
+        // relay counts the message published. These are the kafkajs-style keys.
         // Since @nest-native/kafka 0.4.x raw librdkafka keys work here too —
         // the library routes dotted names (and the undotted ones the client
         // declares, like `debug`) to where librdkafka reads them — so the two
@@ -102,24 +116,21 @@ function messagingImports(): NonNullable<ModuleMetadata['imports']> {
     UserInvitedInboxModule,
     TaskActivityInboxModule,
     TaskSummaryModule,
-    MessagingModule.forRootAsync({
-      drizzleInstanceToken,
-      outboxStore: new SqliteOutboxStore(),
-      inboxStore: new SqliteInboxStore(),
+    OutboxModule.forRootAsync({
       inject: [KafkaProducerService],
-      // See the narrow-from-unknown note above: `useTransport` uses `unknown[]`.
-      useTransport: (producer) =>
-        new KafkaOutboxTransport(
-          producer as KafkaProducerService,
-          kafkaEnv.topicPrefix,
-        ),
+      useFactory: (producer: KafkaProducerService) => ({
+        ...outboxOptions,
+        transports: {
+          kafka: new KafkaOutboxTransport(producer, kafkaEnv.topicPrefix),
+        },
+      }),
     }),
   ];
 }
 
-// The RabbitMQ profile: every outbox event is published to one topic exchange
-// with its topic as the routing key, on a confirm channel — a row completes
-// only once the broker acked the message and did not return it. The consumers
+// The RabbitMQ profile: every outbox message is published to one topic exchange
+// with its topic as the routing key, on a confirm channel — a message counts as
+// published only once the broker acked it and did not return it. The consumers
 // share the app's connection and run the same read-sides as the Kafka profile.
 function rabbitmqMessagingImports(
   env: RabbitmqEnv,
@@ -127,17 +138,17 @@ function rabbitmqMessagingImports(
   return [
     RabbitmqConnectionModule.forRoot(env),
     RabbitmqInboxModule,
-    MessagingModule.forRootAsync({
-      drizzleInstanceToken,
-      outboxStore: new SqliteOutboxStore(),
-      inboxStore: new SqliteInboxStore(),
+    OutboxModule.forRootAsync({
       inject: [RABBITMQ],
-      // See the narrow-from-unknown note above: `useTransport` uses `unknown[]`.
-      useTransport: (connection) =>
-        new RabbitOutboxTransport({
-          connection: connection as RecoveringChannelModel,
-          exchange: env.exchange,
-        }),
+      useFactory: (connection: RecoveringChannelModel) => ({
+        ...outboxOptions,
+        transports: {
+          rabbitmq: new RabbitOutboxTransport({
+            connection,
+            exchange: env.exchange,
+          }),
+        },
+      }),
     }),
   ];
 }
@@ -165,7 +176,7 @@ function rabbitmqMessagingImports(
     AuthModule,
     RequestContextModule,
     AuditLogModule,
-    // Deferred work runs on the same wiring under BOTH messaging profiles: the
+    // Deferred work runs on the same wiring under every messaging profile: the
     // jobs engine resolves the global drizzle database token directly, enqueue
     // joins whatever CLS transaction is open, and the claimer runs in the
     // background worker (scripts/start-worker.ts).
@@ -189,5 +200,13 @@ function rabbitmqMessagingImports(
     EventsCatalogModule,
   ],
   controllers: [HealthController],
+  // The outbox's store, registered with it once, in the module that imports
+  // OutboxModule: every profile keeps its messages and inboxes in SQLite. And
+  // the nightly job that prunes those inboxes, in every profile too.
+  providers: [
+    sqliteOutboxStoreProvider,
+    InboxPruneHandler,
+    InboxPruneScheduleSetup,
+  ],
 })
 export class AppModule {}

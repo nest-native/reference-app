@@ -2,8 +2,8 @@
 #
 #   SQLite (default):       docker compose up
 #                           Single host, persistent volume, no extra service.
-#                           Messaging stays in-process (outbox dispatches to
-#                           registered handlers); no Kafka.
+#                           Messaging stays in-process (the outbox's local
+#                           transport runs the app's handlers); no broker.
 #
 #   Postgres (recipe):      uncomment the `postgres` service and the
 #                           DATABASE_URL line under `api:`/`worker:`. The app
@@ -22,14 +22,14 @@
 #                           the KAFKA_BROKERS lines under `api:`/`worker:`
 #                           and use `docker compose --profile kafka up`.
 #                           Setting KAFKA_BROKERS is the single opt-in switch:
-#                           the outbox claimer then publishes to Kafka and the
+#                           the outbox relay then publishes to Kafka and the
 #                           inbox consumers subscribe. Redpanda is a
 #                           single-binary, Kafka-API-compatible broker — no
 #                           ZooKeeper.
 #
 # Stack:
 #   - api      → exposes :3000, runs migrations on start
-#   - worker   → long-running outbox poller, no port exposed
+#   - worker   → long-running outbox relay + jobs queue, no port exposed
 #   - (postgres → optional)
 #   - (redpanda → profile `kafka`, Kafka API)
 
@@ -79,10 +79,10 @@ services:
     environment:
       DATABASE_URL: /data/app.db
       # DATABASE_URL: postgres://app:app@postgres:5432/app
-      # KAFKA_BROKERS: redpanda:9092          # opt-in: claimer publishes to Kafka
+      # KAFKA_BROKERS: redpanda:9092          # opt-in: the relay publishes to Kafka
       # KAFKA_TOPIC_PREFIX: ""
       # KAFKA_GROUP_ID: reference-app
-      # RABBITMQ_URL: amqp://app:app@rabbitmq:5672   # or: claimer publishes to RabbitMQ
+      # RABBITMQ_URL: amqp://app:app@rabbitmq:5672   # or: the relay publishes to RabbitMQ
       AUTH_SECRET: ${AUTH_SECRET:?set AUTH_SECRET (min 32 chars) in .env or shell}
       OUTBOX_POLL_MS: "2000"
       OUTBOX_BATCH_SIZE: "32"

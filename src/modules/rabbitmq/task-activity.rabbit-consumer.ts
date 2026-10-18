@@ -5,11 +5,11 @@ import {
   Logger,
   type OnApplicationBootstrap,
 } from '@nestjs/common';
-import { RabbitInboxConsumer } from '@nest-native/messaging/rabbitmq';
 import type { RecoveringChannelModel } from 'amqplib';
 import type { RabbitmqEnv } from '../../config/env';
 import { TaskActivityProjections } from '../inbox/task-activity.projections';
 import { InboxDeliveries } from './inbox-deliveries.service';
+import { RabbitInbox } from './rabbit-inbox';
 import { RABBITMQ_ENV } from './rabbitmq-connection.module';
 import { type Subscription, subscribe } from './rabbit-subscription';
 import {
@@ -21,9 +21,9 @@ import {
 /**
  * RabbitMQ-profile consumer for the task lifecycle. All three topics arrive on
  * one queue; the routing key names the topic, and the consumer applies the same
- * {@link TaskActivityProjections} the Kafka profile does. The inbox's dedup
- * `source` is the queue, and the event id is unique across topics, so one
- * source covers all three.
+ * {@link TaskActivityProjections} the Kafka profile does. The inbox's consumer
+ * name is the queue, and the message id is unique across topics, so one name
+ * covers all three.
  */
 @Injectable()
 export class TaskActivityRabbitConsumer
@@ -35,7 +35,7 @@ export class TaskActivityRabbitConsumer
   constructor(
     @Inject(RABBITMQ) private readonly rabbit: RecoveringChannelModel,
     @Inject(RABBITMQ_ENV) private readonly env: RabbitmqEnv,
-    @Inject(RabbitInboxConsumer) private readonly inbox: RabbitInboxConsumer,
+    @Inject(RabbitInbox) private readonly inbox: RabbitInbox,
     @Inject(TaskActivityProjections)
     private readonly projections: TaskActivityProjections,
     @Inject(InboxDeliveries) private readonly deliveries: InboxDeliveries,
@@ -56,11 +56,11 @@ export class TaskActivityRabbitConsumer
           return;
         }
         const result = await this.inbox.consume<unknown>({
-          source: TASK_ACTIVITY_QUEUE.name,
+          consumer: TASK_ACTIVITY_QUEUE.name,
           channel,
           message,
           validate: (payload): payload is unknown => projection.validate(payload),
-          sideEffect: (payload) => projection.apply(payload),
+          sideEffect: (payload, dedupKey) => projection.apply(payload, dedupKey),
           deadLetter: {
             channel: deadLetterChannel,
             exchange: deadLetterExchange(this.env.exchange),

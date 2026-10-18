@@ -1,18 +1,13 @@
-import { Inject, Injectable, type OnModuleInit } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
+import { InjectTransaction, Transactional } from '@nestjs-cls/transactional';
 import {
-  type OutboxHandlerResult,
-  OutboxRegistry,
-} from '@nest-native/messaging/in-process';
-import { ActivityService } from '../activity/activity.service';
+  NonRetryableMessageError,
+  OnOutboxMessage,
+  type OutboxHandlerContext,
+} from '@nestjs/outbox';
+import type { AppDatabase } from '../../database/database';
+import { TaskActivityProjections } from '../inbox/task-activity.projections';
 import {
-  taskCompletedActivity,
-  taskCreatedActivity,
-} from '../activity/task-activity.projection';
-import { TaskAssignedProjection } from '../activity/task-assigned-projection.service';
-import {
-  isTaskAssignedPayload,
-  isTaskCompletedPayload,
-  isTaskCreatedPayload,
   OUTBOX_TOPIC_TASK_ASSIGNED,
   OUTBOX_TOPIC_TASK_COMPLETED,
   OUTBOX_TOPIC_TASK_CREATED,
@@ -20,58 +15,47 @@ import {
 
 /**
  * In-process (default profile) counterpart to {@link UserInvitedHandler}: it
- * routes the task lifecycle events the claimer drains into the activity feed.
- * Each topic gets its own registry handler that validates the payload (a malformed
- * one is a permanent failure the claimer marks `failed`) and applies the shared
- * projection — `task.assigned` through {@link TaskAssignedProjection}, which
- * also schedules the assignment reminder in the same transaction. The feed's
- * own `(org_id, dedup_key)` unique index keeps a re-tick idempotent, so this
- * handler needs no dedup bookkeeping of its own.
+ * projects the task lifecycle events the relay delivers into the activity
+ * feed, through the same {@link TaskActivityProjections} the broker consumers
+ * apply — `task.assigned` also schedules the assignment reminder. The handler's
+ * inbox record, the feed row and the reminder job commit in one transaction
+ * (`ctx.processInTransaction()`), so a redelivery skips the work and a failure
+ * leaves nothing behind. A malformed payload can never succeed: it is
+ * dead-lettered at once instead of retried.
  */
 @Injectable()
-export class ActivityHandler implements OnModuleInit {
+export class ActivityHandler {
   constructor(
-    @Inject(OutboxRegistry) private readonly registry: OutboxRegistry,
-    @Inject(ActivityService) private readonly activity: ActivityService,
-    @Inject(TaskAssignedProjection)
-    private readonly taskAssigned: TaskAssignedProjection,
+    @InjectTransaction() private readonly db: AppDatabase,
+    @Inject(TaskActivityProjections)
+    private readonly projections: TaskActivityProjections,
   ) {}
 
-  onModuleInit(): void {
-    this.registry.register(OUTBOX_TOPIC_TASK_CREATED, (payload) =>
-      this.onCreated(payload),
-    );
-    this.registry.register(OUTBOX_TOPIC_TASK_ASSIGNED, (payload) =>
-      this.onAssigned(payload),
-    );
-    this.registry.register(OUTBOX_TOPIC_TASK_COMPLETED, (payload) =>
-      this.onCompleted(payload),
-    );
-  }
-
-  private onCreated(payload: Record<string, unknown>): OutboxHandlerResult {
-    if (!isTaskCreatedPayload(payload)) {
-      throw new Error('task.created: malformed payload');
+  // Declared Promise<void>: @Transactional() hands the caller a Promise even
+  // though the better-sqlite3 body runs synchronously, the way the app's other
+  // @Transactional() methods do.
+  @OnOutboxMessage(
+    [
+      OUTBOX_TOPIC_TASK_CREATED,
+      OUTBOX_TOPIC_TASK_ASSIGNED,
+      OUTBOX_TOPIC_TASK_COMPLETED,
+    ],
+    { consumer: 'activity-feed' },
+  )
+  @Transactional()
+  project(
+    payload: unknown,
+    ctx: OutboxHandlerContext<AppDatabase>,
+  ): Promise<void> {
+    const projection = this.projections.byTopic.get(ctx.message.topic);
+    if (!projection?.validate(payload)) {
+      throw new NonRetryableMessageError(
+        `${ctx.message.topic}: malformed payload`,
+      );
     }
-    this.activity.record(taskCreatedActivity(payload));
-    return 'completed';
-  }
-
-  private async onAssigned(
-    payload: Record<string, unknown>,
-  ): Promise<OutboxHandlerResult> {
-    if (!isTaskAssignedPayload(payload)) {
-      throw new Error('task.assigned: malformed payload');
-    }
-    await this.taskAssigned.apply(payload);
-    return 'completed';
-  }
-
-  private onCompleted(payload: Record<string, unknown>): OutboxHandlerResult {
-    if (!isTaskCompletedPayload(payload)) {
-      throw new Error('task.completed: malformed payload');
-    }
-    this.activity.record(taskCompletedActivity(payload));
-    return 'completed';
+    ctx.processInTransaction(this.db, () =>
+      projection.apply(payload, ctx.message.id),
+    );
+    return undefined as unknown as Promise<void>;
   }
 }

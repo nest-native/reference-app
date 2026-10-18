@@ -10,9 +10,9 @@ import { TaskAssignedProjection } from './task-assigned-projection.service';
  * The activity feed read-model. {@link ActivityService} is exported so the
  * messaging profiles can feed it: the in-process {@link
  * import('../outbox/activity.handler').ActivityHandler} (default) and the Kafka
- * {@link import('../inbox/task-activity.consumer').TaskActivityConsumer} (gated)
- * both import this module and call `record`. For `task.assigned` they instead
- * go through {@link TaskAssignedProjection}, which also schedules the deferred
+ * and RabbitMQ consumers (gated) all import this module and reach `record`
+ * through the shared `TaskActivityProjections`. For `task.assigned` that goes
+ * through {@link TaskAssignedProjection}, which also schedules the deferred
  * assignment reminder in the same transaction. DatabaseModule provides the
  * transactional Drizzle instance the services write/read through; the global
  * JobsModule provides the JobsService the projection enqueues with.

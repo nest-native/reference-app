@@ -21,19 +21,21 @@ import {
  * How one task lifecycle event reaches the activity feed: the payload guard
  * (a failure dead-letters the message) and the projection write, which runs
  * exactly once inside the inbox's dedup transaction — synchronous and
- * DB-only, as the SQLite store requires. `apply` is a method, not a function
- * property, so a projection of one payload type can sit in a map of any.
+ * DB-only, as a better-sqlite3 transaction requires. `eventId` is the id the
+ * inbox recorded the delivery under, the message id, which keys the feed row.
+ * `apply` is a method, not a function property, so a projection of one payload
+ * type can sit in a map of any.
  */
 export interface TaskActivityProjection<T> {
   validate(payload: unknown): payload is T;
-  apply(payload: T): void;
+  apply(payload: T, eventId: string): void;
 }
 
 /**
- * The task lifecycle projections the broker profiles share. The Kafka consumer
- * binds one handler per topic to them; the RabbitMQ consumer receives all three
- * topics on one queue and picks the projection by routing key. Either way the
- * feed is written by the same code.
+ * The task lifecycle projections every profile shares. The in-process handler
+ * and the RabbitMQ consumer pick the projection by topic (RabbitMQ delivers all
+ * three topics on one queue, routed by key); the Kafka consumer binds one
+ * handler per topic. Either way the feed is written by the same code.
  */
 @Injectable()
 export class TaskActivityProjections {
@@ -49,8 +51,8 @@ export class TaskActivityProjections {
   ) {
     this.taskCreated = {
       validate: isTaskCreatedPayload,
-      apply: (payload) => {
-        activity.record(taskCreatedActivity(payload));
+      apply: (payload, eventId) => {
+        activity.record(taskCreatedActivity(payload, eventId));
       },
     };
     this.taskAssigned = {
@@ -58,14 +60,14 @@ export class TaskActivityProjections {
       // Joins the dedup transaction (synchronously, on better-sqlite3) and
       // enqueues the assignment-reminder job atomically with the feed row; the
       // `void` discards the Promise the @Transactional signature imposes.
-      apply: (payload) => {
-        void taskAssigned.apply(payload);
+      apply: (payload, eventId) => {
+        void taskAssigned.apply(payload, eventId);
       },
     };
     this.taskCompleted = {
       validate: isTaskCompletedPayload,
-      apply: (payload) => {
-        activity.record(taskCompletedActivity(payload));
+      apply: (payload, eventId) => {
+        activity.record(taskCompletedActivity(payload, eventId));
       },
     };
     this.byTopic = new Map<string, TaskActivityProjection<unknown>>([

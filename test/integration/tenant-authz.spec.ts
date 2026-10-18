@@ -13,7 +13,7 @@ import type { AppDatabase } from '../../src/database/database';
 import {
   memberships,
   organizations,
-  outboxEvents,
+  outboxMessages,
   projects,
   tasks,
   users,
@@ -45,7 +45,7 @@ let rivalUserId: number;
 
 const counts = () => ({
   tasks: inspect.select().from(tasks).all().length,
-  outboxEvents: inspect.select().from(outboxEvents).all().length,
+  outboxMessages: inspect.select().from(outboxMessages).all().length,
   users: inspect.select().from(users).all().length,
   memberships: inspect.select().from(memberships).all().length,
   projects: inspect.select().from(projects).all().length,
@@ -148,7 +148,7 @@ test('createTask refuses a cross-org projectId exactly like a missing one, commi
     'a foreign project must be indistinguishable from a nonexistent one',
   );
 
-  // The transaction rolled back before any write: no task row, no outbox event.
+  // The transaction rolled back before any write: no task row, no outbox message.
   assert.deepEqual(counts(), before);
 });
 
