@@ -38,6 +38,9 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      # Always pull node:22-bookworm-slim: the tag floats, and a cached base
+      # image would keep rebuilding on a Node that missed its security releases.
+      pull: true
     image: reference-app:latest
     ports:
       - "3000:3000"

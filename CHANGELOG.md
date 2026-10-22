@@ -6,6 +6,23 @@ added them.
 
 ## [Unreleased]
 
+### Changed — compressed request bodies are refused, and the image pulls its base
+
+- The HTTP app is created by `src/create-app.ts`, shared by `main.ts`, the
+  smoke script and the e2e tests. It registers the JSON and urlencoded body
+  parsers with `inflate: false`, so a `Content-Encoding: br`, gzip or deflate
+  body is answered 415 and never reaches Node's zlib before a guard has run.
+  Node's Brotli decoder carried a remote code execution fix in its
+  2026-10-21 security release (CVE-2026-111497, fixed in 22.23.4 / 24.22.1 /
+  26.12.1); the image runs whatever Node it was built from, so the rebuild is
+  the first defence and this is the second. Nothing sends compressed bodies
+  to this API (`test/e2e/compressed-body.spec.ts` pins the 415 and the plain
+  control).
+- `docker compose build` now pulls `node:22-bookworm-slim` (`pull: true`),
+  and the Dockerfile header says `docker build --pull`: the tag floats, and a
+  cached base image would keep rebuilding on a Node that missed its security
+  releases. SECURITY.md states the floor as `>=22.12`, like `package.json`.
+
 ### Changed — reliable messaging moves to the official `@nestjs/outbox`
 
 - NestJS shipped its own transactional outbox, `@nestjs/outbox` (0.0.1 on

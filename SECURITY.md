@@ -7,10 +7,17 @@ secrets, private URLs, or production data in public issues.
 
 The current supported runtime targets are:
 
-- Node.js `>=22`
+- Node.js `>=22.12`
 - NestJS `11.x`
 - tRPC `11.x`
 - Drizzle ORM `0.45.x`
+
+The floor is an API floor. The Node to run is the current security release
+of the 22 or 24 line: the image is only as new as its last build, so rebuild
+it with `docker compose build --pull` (or `docker build --pull`) whenever Node
+ships a security release. Compressed request bodies are refused with 415
+(`src/create-app.ts`), so a `Content-Encoding: br` body never reaches Node's
+Brotli decoder before authentication.
 
 The supported line for each of the seven `@nest-native/*` libraries lives in
 the README's [Compatibility](README.md#compatibility) table — kept in one

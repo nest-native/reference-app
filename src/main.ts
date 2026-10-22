@@ -1,13 +1,12 @@
 import 'reflect-metadata';
-import { NestFactory } from '@nestjs/core';
 import { AsyncApiModule, getAsyncApiDocument } from '@nest-native/asyncapi';
-import { AppModule } from './app.module';
+import { createApp } from './create-app';
 import { loadEnv } from './config/env';
 import { EVENTS_CATALOG_INFO } from './modules/events-catalog/event-schemas';
 
 async function bootstrap(): Promise<void> {
   const env = loadEnv();
-  const app = await NestFactory.create(AppModule);
+  const app = await createApp();
 
   // Generate the AsyncAPI 3.0 event catalog from the decorated handlers and
   // serve it (UI + JSON + YAML). This is pure metadata, so it is always on and

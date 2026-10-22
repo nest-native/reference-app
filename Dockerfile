@@ -3,7 +3,9 @@
 # Stage 1 (builder): install deps, compile TypeScript to dist/.
 # Stage 2 (runtime): copy dist/ + production deps + migrations + seed script.
 #
-# Build:   docker build -t reference-app:latest .
+# Build:   docker build --pull -t reference-app:latest .
+#          (--pull: the node:22 tag floats, so a rebuild picks up Node's
+#          security releases only if the base image is pulled again)
 # Run API: docker run --rm -p 3000:3000 \
 #            -v reference-app-data:/data \
 #            -e DATABASE_URL=/data/app.db \

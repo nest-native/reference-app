@@ -7,7 +7,6 @@ import Database from 'better-sqlite3';
 import { drizzle } from 'drizzle-orm/better-sqlite3';
 import { migrate } from 'drizzle-orm/better-sqlite3/migrator';
 import type { INestApplication } from '@nestjs/common';
-import { NestFactory } from '@nestjs/core';
 import superjson from 'superjson';
 import type { SuperJSONResult } from 'superjson';
 import { schema } from '../../src/database/schema';
@@ -29,8 +28,8 @@ before(async () => {
   migrate(db, { migrationsFolder: './src/database/migrations' });
   sqlite.close();
 
-  const { AppModule } = await import('../../src/app.module');
-  app = await NestFactory.create(AppModule, { logger: false });
+  const { createApp } = await import('../../src/create-app');
+  app = await createApp({ logger: false });
   await app.listen(0, '127.0.0.1');
   baseUrl = await app.getUrl();
 });
