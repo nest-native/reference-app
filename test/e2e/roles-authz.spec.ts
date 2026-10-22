@@ -4,7 +4,6 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, test } from 'node:test';
 import type { INestApplication } from '@nestjs/common';
-import { NestFactory } from '@nestjs/core';
 import { and, eq } from 'drizzle-orm';
 import { getDrizzleToken } from '@nestjs/drizzle';
 import superjson from 'superjson';
@@ -89,8 +88,8 @@ before(async () => {
   orgId = seeded.org.id;
   projectId = seeded.project.id;
 
-  const { AppModule } = await import('../../src/app.module');
-  app = await NestFactory.create(AppModule, { logger: false });
+  const { createApp } = await import('../../src/create-app');
+  app = await createApp({ logger: false });
   await app.listen(0, '127.0.0.1');
   baseUrl = await app.getUrl();
   inspect = app.get<AppDatabase>(getDrizzleToken());

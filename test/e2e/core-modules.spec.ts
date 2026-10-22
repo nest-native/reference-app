@@ -4,7 +4,6 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, test } from 'node:test';
 import type { INestApplication } from '@nestjs/common';
-import { NestFactory } from '@nestjs/core';
 import superjson from 'superjson';
 import type { SuperJSONResult } from 'superjson';
 import { seedDatabase } from '../../scripts/seed';
@@ -79,8 +78,8 @@ before(async () => {
     'e2e-core-secret-must-be-at-least-32-characters-xx';
   seedDatabase(dbPath);
 
-  const { AppModule } = await import('../../src/app.module');
-  app = await NestFactory.create(AppModule, { logger: false });
+  const { createApp } = await import('../../src/create-app');
+  app = await createApp({ logger: false });
   await app.listen(0, '127.0.0.1');
   baseUrl = await app.getUrl();
 

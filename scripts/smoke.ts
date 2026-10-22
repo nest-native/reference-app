@@ -5,7 +5,6 @@ import { join } from 'node:path';
 import Database from 'better-sqlite3';
 import { drizzle } from 'drizzle-orm/better-sqlite3';
 import { migrate } from 'drizzle-orm/better-sqlite3/migrator';
-import { NestFactory } from '@nestjs/core';
 import { organizations, schema } from '../src/database/schema';
 
 async function smoke(): Promise<void> {
@@ -20,8 +19,8 @@ async function smoke(): Promise<void> {
   migrate(db, { migrationsFolder: './src/database/migrations' });
   sqlite.close();
 
-  const { AppModule } = await import('../src/app.module');
-  const app = await NestFactory.create(AppModule, { logger: false });
+  const { createApp } = await import('../src/create-app');
+  const app = await createApp({ logger: false });
   await app.listen(0, '127.0.0.1');
 
   try {
