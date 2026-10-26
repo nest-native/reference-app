@@ -3,15 +3,19 @@ import { strict as assert } from 'node:assert';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, test } from 'node:test';
-import type { INestApplicationContext } from '@nestjs/common';
 // Static, unlike the env-reading imports below: the CLS packages ship separate
 // ESM and CommonJS builds, and a dynamic import() here would load the ESM copy
 // while src/ (compiled to CommonJS) requires the other one — two copies whose
-// injection tokens never match. @nestjs/outbox is ESM-only, yet under tsx an
-// import() of it loads a second copy as well, whose OutboxStorage token is not
-// the one src/ requires.
+// injection tokens never match. The @nestjs/* packages (core and common since
+// NestJS 12, outbox, drizzle) are ESM-only, yet under tsx an import() of one
+// loads a second copy as well: tsx compiles the require() src/ makes into a
+// separate CommonJS instance, so e.g. the HttpAdapterHost a dynamically
+// imported NestFactory registers is not the class nestjs-cls injects.
 import { ClsPluginTransactional } from '@nestjs-cls/transactional';
 import { TransactionalAdapterDrizzleOrm } from '@nestjs-cls/transactional-adapter-drizzle-orm';
+import { type INestApplicationContext, Module } from '@nestjs/common';
+import { NestFactory } from '@nestjs/core';
+import { getDrizzleToken } from '@nestjs/drizzle';
 import { OutboxModule } from '@nestjs/outbox';
 import { ClsModule } from 'nestjs-cls';
 
@@ -110,9 +114,6 @@ before(async () => {
   kafka = await import('@nest-native/kafka/testing');
   schema = await import('../../src/database/schema');
   drizzleOps = await import('drizzle-orm');
-  const { Module } = await import('@nestjs/common');
-  const { NestFactory } = await import('@nestjs/core');
-  const { getDrizzleToken } = await import('@nestjs/drizzle');
   const { DatabaseModule } = await import('../../src/database/database.module');
   const { AuditLogModule } = await import(
     '../../src/modules/audit-log/audit-log.module'

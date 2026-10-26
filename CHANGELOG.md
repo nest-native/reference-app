@@ -6,6 +6,21 @@ added them.
 
 ## [Unreleased]
 
+### Fixed — specs import NestJS statically, so NestJS 12 boots one copy of it
+
+- Five integration specs loaded `@nestjs/common`, `@nestjs/core` and
+  `@nestjs/drizzle` with `import()` inside `before()`. NestJS 12 ships core
+  and common as ESM-only, and under tsx an `import()` of an ESM-only package
+  loads a second copy next to the one `src/` requires. The specs' `NestFactory`
+  then registered a different `HttpAdapterHost` class from the one
+  `nestjs-cls`'s `ClsRootModule` injects, and every non-HTTP boot failed with
+  "Nest can't resolve dependencies of the ClsRootModule". That is what kept
+  the NestJS 12 Dependabot group red. The imports are static now, which
+  changes nothing on NestJS 11.
+- It is the third time this two-copies problem has appeared, after
+  `nestjs-cls` and `@nestjs/outbox`, so GUIDELINES §7 states the rule and
+  `npm run lint` enforces it with `scripts/check-static-imports.mjs`.
+
 ### Fixed — the live Kafka e2e retries topic creation on a retired connection
 
 - `createSubscribedTopics()` in `test/integration/reliable-messaging.kafka.spec.ts`

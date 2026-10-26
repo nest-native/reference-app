@@ -15,7 +15,7 @@
   "scripts": {
     "build": "rimraf dist && tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "lint": "biome lint .",
+    "lint": "biome lint . && node scripts/check-static-imports.mjs",
     "lint:fix": "biome lint --write .",
     "complexity:check": "biome lint --config-path=biome.complexity.json src",
     "complexity:report": "biome lint --config-path=biome.complexity-report.json --max-diagnostics=none src",

@@ -164,7 +164,21 @@ app's constitution.
   library names. A gate with a hardcoded roster goes stale exactly the way the
   docs it guards do.
 
-### 7. When In Doubt
+### 7. One Copy of Each Framework Package (no `import()` of `@nestjs/*`)
+
+- Specs and scripts import `@nestjs/*`, `@nestjs-cls/*` and `nestjs-cls`
+  **statically**. Under `node --import tsx`, an `import()` of an ESM-only
+  package (NestJS 12's core and common, `@nestjs/outbox`, `@nestjs/drizzle`)
+  or of a package with separate ESM and CommonJS builds (the CLS packages)
+  loads a second copy next to the one `src/` requires. Their classes are
+  injection tokens, so the second copy fails at boot with "Nest can't
+  resolve dependencies of ..." for a provider that is plainly registered.
+- `import()` stays for our own modules that read the environment when they
+  load, which is why specs import those inside `before()`.
+- `npm run lint` runs `scripts/check-static-imports.mjs`, which fails on any
+  such `import()` in `src/`, `test/` or `scripts/`.
+
+### 8. When In Doubt
 
 - Ask: *"Does this make the libraries' integration clearer to a reader, and does
   it keep each library feeling like itself?"* If not, redesign until it does.
