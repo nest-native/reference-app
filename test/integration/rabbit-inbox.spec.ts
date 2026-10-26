@@ -4,12 +4,14 @@ import { EventEmitter } from 'node:events';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, test } from 'node:test';
-import type { INestApplicationContext } from '@nestjs/common';
 // Static, unlike the env-reading imports in before(): the CLS packages ship
-// separate ESM and CommonJS builds, and under tsx an import() of @nestjs/outbox
-// loads a second copy (see kafka-consumer-inmemory.spec.ts).
+// separate ESM and CommonJS builds, and under tsx an import() of an ESM-only
+// @nestjs/* package loads a second copy (see kafka-consumer-inmemory.spec.ts).
 import { ClsPluginTransactional } from '@nestjs-cls/transactional';
 import { TransactionalAdapterDrizzleOrm } from '@nestjs-cls/transactional-adapter-drizzle-orm';
+import { type INestApplicationContext, Module } from '@nestjs/common';
+import { NestFactory } from '@nestjs/core';
+import { getDrizzleToken } from '@nestjs/drizzle';
 import { NonRetryableMessageError, OutboxModule } from '@nestjs/outbox';
 import type { Channel, ConfirmChannel, ConsumeMessage } from 'amqplib';
 import { ClsModule } from 'nestjs-cls';
@@ -123,9 +125,6 @@ before(async () => {
   const { seedDatabase } = await import('../../scripts/seed');
   seedDatabase(dbPath);
 
-  const { Module } = await import('@nestjs/common');
-  const { NestFactory } = await import('@nestjs/core');
-  const { getDrizzleToken } = await import('@nestjs/drizzle');
   const { DatabaseModule } = await import('../../src/database/database.module');
   const { sqliteOutboxStoreProvider } = await import(
     '../../src/modules/outbox/sqlite-outbox.store'

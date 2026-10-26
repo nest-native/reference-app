@@ -6,8 +6,11 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { after, before, test } from 'node:test';
 import type { INestApplicationContext } from '@nestjs/common';
 // Static, unlike the env-reading imports in before(): under tsx an import() of
-// @nestjs/outbox loads a second copy, whose OutboxRelay is not the class src/
-// registered.
+// an ESM-only @nestjs/* package loads a second copy — of @nestjs/outbox, an
+// OutboxRelay that is not the class src/ registered; of @nestjs/core (ESM-only
+// since NestJS 12), a NestFactory whose HttpAdapterHost nestjs-cls cannot see.
+import { NestFactory } from '@nestjs/core';
+import { getDrizzleToken } from '@nestjs/drizzle';
 import { OutboxRelay } from '@nestjs/outbox';
 
 // GATED end-to-end against a LIVE broker. Skipped unless KAFKA_BROKERS is set,
@@ -126,8 +129,6 @@ before(async () => {
 
   schema = await import('../../src/database/schema');
   drizzleOps = await import('drizzle-orm');
-  const { NestFactory } = await import('@nestjs/core');
-  const { getDrizzleToken } = await import('@nestjs/drizzle');
   const { KafkaProducerService } = await import('@nest-native/kafka');
   const { OrganizationOnboardingService } = await import(
     '../../src/modules/onboarding/organization-onboarding.service'

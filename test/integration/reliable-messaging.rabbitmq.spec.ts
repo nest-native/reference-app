@@ -7,8 +7,10 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { after, before, test } from 'node:test';
 import type { INestApplicationContext } from '@nestjs/common';
 // Static, unlike the env-reading imports in before(): under tsx an import() of
-// @nestjs/outbox loads a second copy, whose OutboxRelay is not the class src/
-// registered.
+// an ESM-only @nestjs/* package loads a second copy (see
+// reliable-messaging.kafka.spec.ts).
+import { ContextIdFactory, NestFactory } from '@nestjs/core';
+import { getDrizzleToken } from '@nestjs/drizzle';
 import { OutboxRelay } from '@nestjs/outbox';
 import type { Channel, GetMessage, RecoveringChannelModel } from 'amqplib';
 import type { InboxDelivery } from '../../src/modules/rabbitmq/inbox-deliveries.service';
@@ -69,8 +71,6 @@ before(async () => {
   schema = await import('../../src/database/schema');
   topology = await import('../../src/modules/rabbitmq/rabbitmq.topology');
   drizzleOps = await import('drizzle-orm');
-  const { ContextIdFactory, NestFactory } = await import('@nestjs/core');
-  const { getDrizzleToken } = await import('@nestjs/drizzle');
   const { loadEnv } = await import('../../src/config/env');
   const { InboxDeliveries } = await import(
     '../../src/modules/rabbitmq/inbox-deliveries.service'
