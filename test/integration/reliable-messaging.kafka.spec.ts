@@ -53,7 +53,15 @@ const TOPIC = `${TOPIC_PREFIX}user.invited`;
  * nudges. It failed about half the runs against a fresh broker, which is what
  * every CI run gets. In a deployment, topics are provisioned before the
  * services that use them; the spec does the same. `createTopics` resolves for a
- * topic that already exists, so a rerun against a long-lived broker is fine.
+ * topic that already exists, so a rerun against a long-lived broker is fine,
+ * and so is retrying it.
+ *
+ * It is retried only for ERR__DESTROY_BROKER ("Broker handle destroyed without
+ * termination"). Once librdkafka learns the broker list from the cluster it
+ * retires the connection it bootstrapped through, and a request still queued
+ * on that connection fails with this error. librdkafka retries its own
+ * metadata requests on it but not admin requests, so a CreateTopics sent right
+ * after connect can lose the race: it failed main's live-broker job once.
  */
 async function createSubscribedTopics(): Promise<void> {
   const { KafkaJS } = await import('@confluentinc/kafka-javascript');
@@ -74,12 +82,35 @@ async function createSubscribedTopics(): Promise<void> {
   const admin = new KafkaJS.Kafka({ kafkaJS: { brokers } }).admin();
   await admin.connect();
   try {
-    await admin.createTopics({
-      topics: topics.map((topic) => ({ topic, numPartitions: 1 })),
-    });
+    for (let attempt = 1; ; attempt += 1) {
+      try {
+        await admin.createTopics({
+          topics: topics.map((topic) => ({ topic, numPartitions: 1 })),
+        });
+        return;
+      } catch (error) {
+        const retired = KafkaJS.ErrorCodes.ERR__DESTROY_BROKER;
+        if (attempt >= CREATE_TOPICS_ATTEMPTS || !everyErrorHasCode(error, retired)) {
+          throw error;
+        }
+        await delay(250 * attempt);
+      }
+    }
   } finally {
     await admin.disconnect();
   }
+}
+
+const CREATE_TOPICS_ATTEMPTS = 5;
+
+/** True when `error` aggregates per-topic errors that all carry `code`. */
+function everyErrorHasCode(error: unknown, code: number): boolean {
+  const errors = (error as { errors?: unknown } | null)?.errors;
+  return (
+    Array.isArray(errors) &&
+    errors.length > 0 &&
+    errors.every((item) => (item as { code?: unknown } | null)?.code === code)
+  );
 }
 
 before(async () => {
