@@ -6,6 +6,18 @@ added them.
 
 ## [Unreleased]
 
+### Fixed — the live Kafka e2e retries topic creation on a retired connection
+
+- `createSubscribedTopics()` in `test/integration/reliable-messaging.kafka.spec.ts`
+  retries `createTopics` up to five times when every per-topic error is
+  librdkafka's `ERR__DESTROY_BROKER` ("Broker handle destroyed without
+  termination"). Once librdkafka learns the broker list from the cluster it
+  retires the connection it bootstrapped through and fails the requests still
+  queued on it. It retries its own metadata requests on that error, but not
+  admin requests, so a CreateTopics sent right after connect can lose the
+  race: it failed main's live-broker job once on 2026-10-22 and passed on a
+  rerun. Creating a topic that already exists succeeds, so the retry is safe.
+
 ### Security — the advisories published on 2026-10-25 are cleared
 
 - `npm audit --audit-level=high` failed on five packages published as
