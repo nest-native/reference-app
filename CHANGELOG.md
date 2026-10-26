@@ -6,6 +6,17 @@ added them.
 
 ## [Unreleased]
 
+### Security — the advisories published on 2026-10-25 are cleared
+
+- `npm audit --audit-level=high` failed on five packages published as
+  vulnerable that day: body-parser 2.3.0 (denial of service through bytes
+  trailing a compressed body), multer 2.4.0 (a pending async `fileFilter`
+  after teardown), undici 7.30.0 (three issues), fast-uri 3.1.8 (four URI
+  parsing issues, moderate) and zod 4.6.5 (memory exhaustion on oversized
+  constrained collections). The lockfile now resolves body-parser 2.4.0,
+  undici 7.30.1 and fast-uri 3.1.9 within the existing ranges; the `multer`
+  override moves to `^2.5.0`, and the exact `zod` pin to 4.6.7.
+
 ### Changed — compressed request bodies are refused, and the image pulls its base
 
 - The HTTP app is created by `src/create-app.ts`, shared by `main.ts`, the
