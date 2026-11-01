@@ -81,8 +81,8 @@
     "@confluentinc/kafka-javascript": "^1.11.0"
   },
   "devDependencies": {
-    "@asyncapi/parser": "^3.6.4",
-    "@biomejs/biome": "2.5.15",
+    "@asyncapi/parser": "^3.6.6",
+    "@biomejs/biome": "2.6.2",
     "@stryker-mutator/core": "^10.0.0",
     "@trpc/client": "^11.19.0",
     "@types/better-sqlite3": "9.6.0",
