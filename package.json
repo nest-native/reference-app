@@ -128,5 +128,5 @@
     ],
     "cache": false
   },
-  "packageManager": "npm@11.13.0"
+  "packageManager": "npm@11.21.1"
 }
