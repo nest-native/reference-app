@@ -57,7 +57,7 @@
     "@nest-native/kafka": "^0.6.0",
     "@nest-native/lockout": "^0.4.0",
     "@nest-native/trpc": "^0.7.0",
-    "@nestjs-cls/transactional": "^4.0.1",
+    "@nestjs-cls/transactional": "^4.0.2",
     "@nestjs-cls/transactional-adapter-drizzle-orm": "^2.0.1",
     "@nestjs/common": "11.2.3",
     "@nestjs/core": "11.2.3",
