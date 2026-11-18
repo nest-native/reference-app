@@ -175,8 +175,19 @@ app's constitution.
   resolve dependencies of ..." for a provider that is plainly registered.
 - `import()` stays for our own modules that read the environment when they
   load, which is why specs import those inside `before()`.
+- Every `NestFactory.create()` call passes its HTTP adapter,
+  `new ExpressAdapter()` imported statically from `@nestjs/platform-express`.
+  Given none, NestJS 12 loads `@nestjs/platform-express` with its own
+  `import()`, which under tsx brings a second copy of `@nestjs/common`. The
+  adapter then wraps body-parser errors in that copy's `HttpException`, which
+  the exception filter does not recognise, so a body-parser 4xx (400, 413,
+  415) is answered 500. `NestFactory.create()` also loads
+  `@nestjs/microservices` with `import()`; the HTTP app never uses that copy,
+  but `app.connectMicroservice()` would.
 - `npm run lint` runs `scripts/check-static-imports.mjs`, which fails on any
-  such `import()` in `src/`, `test/` or `scripts/`.
+  `import()` of `@nestjs/*`, `@nestjs-cls/*` or `nestjs-cls`, and on a
+  `NestFactory.create()` call without an adapter, in `src/`, `test/`,
+  `scripts/` or `client-smoke/`.
 
 ### 8. When In Doubt
 
