@@ -3,6 +3,7 @@ import { strict as assert } from 'node:assert';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { NestFactory } from '@nestjs/core';
+import { ExpressAdapter } from '@nestjs/platform-express';
 import { createTRPCClient, httpBatchLink } from '@trpc/client';
 import superjson from 'superjson';
 import { OutboxRelay } from '@nestjs/outbox';
@@ -24,7 +25,7 @@ async function main(): Promise<void> {
   const seeded = seedDatabase(dbPath);
 
   const { AppModule } = await import('../src/app.module');
-  const app = await NestFactory.create(AppModule, { logger: false });
+  const app = await NestFactory.create(AppModule, new ExpressAdapter(), { logger: false });
   await app.listen(0, '127.0.0.1');
   const baseUrl = await app.getUrl();
 

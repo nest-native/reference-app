@@ -1,11 +1,18 @@
 import type { NestApplicationOptions } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
-import type { NestExpressApplication } from '@nestjs/platform-express';
+import { ExpressAdapter, type NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
 
 /**
  * Creates the HTTP application the way `main.ts` runs it, for the server and
  * the tests alike.
+ *
+ * The Express adapter is created here, not by `NestFactory`: given none,
+ * NestJS 12 loads `@nestjs/platform-express` with its own `import()`, which
+ * under tsx brings a second copy of `@nestjs/common`. The adapter would then
+ * wrap body-parser errors, the 415 below included, in an `HttpException` the
+ * exception filter does not recognise, so they would be answered 500
+ * (GUIDELINES_NEST_REFERENCE_APP.md §7).
  *
  * Compressed request bodies are refused with 415. Nothing sends them to this
  * API, and `inflate: false` keeps Express's body parser from handing a
@@ -15,7 +22,7 @@ import { AppModule } from './app.module';
  * (CVE-2026-111497): a rebuilt image is the first defence, this is the second.
  */
 export async function createApp(options: NestApplicationOptions = {}): Promise<NestExpressApplication> {
-  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, new ExpressAdapter(), {
     ...options,
     bodyParser: false,
   });

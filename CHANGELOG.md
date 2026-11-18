@@ -6,6 +6,23 @@ added them.
 
 ## [Unreleased]
 
+### Fixed — the HTTP app passes its Express adapter, so body-parser errors keep their 4xx status on NestJS 12
+
+- `createApp()` and the client smoke pass `new ExpressAdapter()` to
+  `NestFactory.create()`. Given no adapter, NestJS 12's `NestFactory` loads
+  `@nestjs/platform-express` with `import()`, and under tsx that brings a
+  second copy of `@nestjs/common`. NestJS 12's adapter wraps body-parser
+  errors in that copy's `HttpException`, which the exception filter does not
+  recognise, so they were answered 500: a compressed body got 500 instead of
+  415, and invalid JSON 500 instead of 400. That is what kept the NestJS 12
+  Dependabot group red once the specs imported NestJS statically. The built
+  app under plain `node` loads one copy and was not affected, and nothing
+  changes on NestJS 11.
+- It is the fourth time this two-copies problem has appeared, so GUIDELINES
+  §7 states the rule and `scripts/check-static-imports.mjs`, in
+  `npm run lint`, also fails on a `NestFactory.create()` call without an
+  adapter, and now scans `client-smoke/` too.
+
 ### Fixed — specs import NestJS statically, so NestJS 12 boots one copy of it
 
 - Five integration specs loaded `@nestjs/common`, `@nestjs/core` and
