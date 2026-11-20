@@ -93,6 +93,8 @@ jobs:
   kafka-e2e:
     name: Kafka profile e2e (live broker)
     runs-on: ubuntu-latest
+    # Fail a hung broker test in minutes; GitHub's default is six hours.
+    timeout-minutes: 10
     # The Kafka profile's gated end-to-end spec
     # (test/integration/reliable-messaging.kafka.spec.ts) against the Redpanda
     # broker docker-compose.yml defines — the one `npm run infra:up` starts
@@ -128,6 +130,8 @@ jobs:
   rabbitmq-e2e:
     name: RabbitMQ profile e2e (live broker)
     runs-on: ubuntu-latest
+    # Fail a hung broker test in minutes; GitHub's default is six hours.
+    timeout-minutes: 10
     # The RabbitMQ profile's gated end-to-end spec
     # (test/integration/reliable-messaging.rabbitmq.spec.ts) against a real
     # RabbitMQ 4. The spec skips when RABBITMQ_URL is unset, so this job runs it
