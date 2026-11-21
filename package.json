@@ -2,7 +2,7 @@
   "name": "nest-native-reference-app",
   "version": "0.0.1",
   "private": true,
-  "description": "Production-shaped multi-tenant work-tracking SaaS showcasing all seven @nest-native libraries (trpc, kafka, jobs, asyncapi, ai-sdk, cache, lockout) on the official @nestjs/drizzle and @nestjs/outbox",
+  "description": "Production-shaped multi-tenant work-tracking SaaS showcasing all six @nest-native libraries (trpc, kafka, jobs, asyncapi, cache, lockout) on the official @nestjs/drizzle and @nestjs/outbox",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/nest-native/reference-app.git"
@@ -50,7 +50,6 @@
   },
   "dependencies": {
     "@authlock/core": "^0.4.0",
-    "@nest-native/ai-sdk": "^0.6.0",
     "@nest-native/asyncapi": "^0.3.0",
     "@nest-native/cache": "^0.1.0",
     "@nest-native/jobs": "^0.5.2",

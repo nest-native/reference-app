@@ -112,8 +112,6 @@ test('streams an SSE status update built from the seeded activity feed', async (
 
   assert.equal(res.status, 200);
   assert.match(res.headers.get('content-type') ?? '', /text\/event-stream/);
-  // The defaultHeaders configured on AiModule.forRoot reach the stream.
-  assert.match(res.headers.get('x-powered-by') ?? '', /nest-native-ai/);
 
   const body = await res.text();
   // The response is the AI SDK UI-message protocol: it carries text-delta frames.
@@ -138,7 +136,8 @@ test('rejects an unauthenticated caller with 401 before opening the stream', asy
   const res = await fetch(`${baseUrl}/projects/${projectId}/assistant`, {
     method: 'POST',
   });
-  // The guard runs before the interceptor, so this is a plain HTTP error…
+  // The guards run before the handler writes anything, so this is a plain
+  // HTTP error…
   assert.equal(res.status, 401);
   // …not an SSE stream.
   assert.doesNotMatch(
