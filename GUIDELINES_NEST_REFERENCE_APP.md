@@ -1,13 +1,13 @@
 # GUIDELINES_NEST_REFERENCE_APP.md
 
-## Core Philosophy - This app SERVES the seven nest-native libraries
+## Core Philosophy - This app SERVES the six nest-native libraries
 
 This is `nest-native/reference-app`: a production-shaped, multi-tenant
-work-tracking SaaS whose only job is to put **all seven
+work-tracking SaaS whose only job is to put **all six
 [nest-native](https://github.com/nest-native) libraries** — `trpc`, `kafka`,
-`jobs`, `asyncapi`, `ai-sdk`, `lockout`, and `cache` — under realistic backend
-pressure, on the official `@nestjs/drizzle` and `@nestjs/outbox` modules, and
-show how they compose. It is **read first and run second**. Every decision
+`jobs`, `asyncapi`, `lockout`, and `cache` — under realistic backend pressure,
+on the official `@nestjs/drizzle` and `@nestjs/outbox` modules, and show how
+they compose. It is **read first and run second**. Every decision
 optimizes for a reader who wants to lift a pattern into their own app.
 
 Follow these assumptions in **EVERY** file you generate or modify. This is the
@@ -15,11 +15,12 @@ app's constitution.
 
 ### 1. What This App Is (and Is Not)
 
-- It **serves the libraries**. Every module exists to exercise one of the seven
+- It **serves the libraries**. Every module exists to exercise one of the six
   under realistic pressure — a typed API, an event backbone, deferred jobs, a
-  documented event catalog, a streaming AI assistant, brute-force login
-  lockout, and tag-invalidated read caching — with reliable domain events on
-  the official outbox underneath.
+  documented event catalog, brute-force login lockout, and tag-invalidated
+  read caching — with reliable domain events on the official outbox
+  underneath. The one exception is the streaming AI assistant, which runs on
+  the AI SDK alone until it can move to the official `@nestjs/ai` (below).
 - It is **not** a product, **not** a starter or scaffold, and **not** a generic
   NestJS boilerplate. There is no CLI, no second frontend, no multi-database
   story, no GraphQL — those are deliberate omissions, not gaps to fill.
@@ -44,6 +45,17 @@ app's constitution.
   `OutboxInbox.processInTransaction()` in the broker consumers. The module
   ships stores for PostgreSQL and MySQL only, so the app keeps its messages in
   its own `SqliteOutboxStore` (see Rule 2).
+- **The AI assistant runs on the AI SDK alone until NestJS 12.** NestJS
+  shipped its own AI module, `@nestjs/ai`, in 2026-11, covering what
+  `@nest-native/ai-sdk` was used for here, and that package was retired in its
+  favour. But `@nestjs/ai` 0.0.2 peers NestJS `^12` only, and the app stays on
+  11 until the shared flip trigger fires (the README's Compatibility section),
+  so in the meantime the assistant calls the AI SDK directly: the controller
+  takes the response with `@Res()`, does everything that can throw before it
+  writes, and pipes `streamText()` through the SDK's
+  `pipeUIMessageStreamToResponse()`, aborting the model call when the client
+  goes away. It moves to `@nestjs/ai` in the change that moves the app to
+  NestJS 12.
 - Use only each library's **primary onboarding API** (`*.forRoot()` /
   `forRootAsync()` / `forFeature()`, the public decorators). Reaching into a
   package's internals is a smell — if you need an internal, the public API has a
@@ -134,12 +146,12 @@ app's constitution.
 
 ### 6. The Roster Is a Claim (change it in ONE change)
 
-- "All seven libraries" is this app's headline claim, and it is stated in
+- "All six libraries" is this app's headline claim, and it is stated in
   **four** places that drift apart silently. When the roster changes — a
   library added, dropped, or renamed — all four move **in the same PR**:
   1. `package.json` `description` — the count word and every
      `@nest-native/*` name.
-  2. `README.md` — the badge, the "Seven libraries, seven chapters" table, and
+  2. `README.md` — the badge, the "Six libraries, six chapters" table, and
      the **Compatibility** table (one row per library, versions read off
      `package.json`).
   3. `docs/` — the Pages site: `index.html`'s lede and roster grid, plus
@@ -157,7 +169,7 @@ app's constitution.
   `engines.node` in `package.json`, since a lower Node cannot load the
   ESM-only official modules.
 - Prefer **dynamic or roster-free badges** over hardcoded ones. A
-  `libraries-7/7` badge is a version literal in disguise; keep it checked (it
+  `libraries-6/6` badge is a version literal in disguise; keep it checked (it
   is) or drop it, but never leave it to be updated from memory.
 - Any check of this kind **iterates the declared dependencies** — every
   `@nest-native/*` key in `package.json` — instead of hardcoding a list of

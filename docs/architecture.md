@@ -7,13 +7,12 @@ description: One-sitting tour of the nest-native reference app — module graph,
 # Architecture
 
 This is a single-process Nest application (plus one background worker
-process). It exists to demonstrate how all seven
+process). It exists to demonstrate how all six
 [nest-native](https://github.com/nest-native) libraries —
 [`trpc`](https://github.com/nest-native/trpc),
 [`kafka`](https://github.com/nest-native/kafka),
 [`jobs`](https://github.com/nest-native/jobs),
 [`asyncapi`](https://github.com/nest-native/asyncapi),
-[`ai-sdk`](https://github.com/nest-native/ai-sdk),
 [`cache`](https://github.com/nest-native/cache), and
 [`lockout`](https://github.com/nest-native/lockout) —
 compose on the official [`@nestjs/drizzle`](https://docs.nestjs.com/data/drizzle)
@@ -129,7 +128,7 @@ concrete rather than designing in a vacuum.
               │     UsersRouter, ProjectsRouter, TasksRouter,    │
               │     ActivityRouter                               │
               │   EventsCatalogModule ← AsyncApiModule.forRoot   │
-              │   AssistantModule     ← AiModule.forRoot         │
+              │   AssistantModule     (the AI SDK directly)      │
               └──────────────────────────────────────────────────┘
 ```
 
@@ -160,12 +159,16 @@ chapter:
   [`src/modules/reminders/`](https://github.com/nest-native/reference-app/blob/main/src/modules/reminders).
 - [`src/modules/events-catalog/events-catalog.module.ts`](https://github.com/nest-native/reference-app/blob/main/src/modules/events-catalog/events-catalog.module.ts) →
   `AsyncApiModule.forRoot({ … })`, served at `/asyncapi` from `main.ts`.
-- [`src/modules/assistant/assistant.module.ts`](https://github.com/nest-native/reference-app/blob/main/src/modules/assistant/assistant.module.ts) →
-  `AiModule.forRoot({ … })` for the streaming project assistant.
 - [`src/cache/cache.setup.ts`](https://github.com/nest-native/reference-app/blob/main/src/cache/cache.setup.ts) →
   `CacheModule.forRootAsync({ … })` (see [Read caching](#read-caching)).
 - [`src/auth/lockout.setup.ts`](https://github.com/nest-native/reference-app/blob/main/src/auth/lockout.setup.ts) →
   `LockoutModule.forRootAsync({ … })` (see [Login lockout](#login-lockout)).
+
+The project assistant has no module to wire: until the app moves to NestJS 12
+and the official `@nestjs/ai`,
+[`src/modules/assistant/project-assistant.controller.ts`](https://github.com/nest-native/reference-app/blob/main/src/modules/assistant/project-assistant.controller.ts)
+calls the AI SDK's `streamText()` itself and pipes the stream to the response
+with the SDK's `pipeUIMessageStreamToResponse()`.
 
 Feature modules list their repositories and routers as providers.
 Repositories are plain `@Injectable()` classes. Routers are

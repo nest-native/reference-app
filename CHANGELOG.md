@@ -6,6 +6,33 @@ added them.
 
 ## [Unreleased]
 
+### Changed — the project assistant streams with the AI SDK directly, and the roster is six libraries
+
+- `@nest-native/ai-sdk` was retired on 2026-11-21 in favour of the official
+  `@nestjs/ai`, and the app no longer depends on it. `@nestjs/ai` 0.0.2 peers
+  NestJS `^12` only and the app stays on 11 until the shared flip trigger
+  fires, so the assistant takes the "NestJS 11 without a library" path of the
+  package's migration guide, and moves to `@nestjs/ai` with NestJS 12.
+- `ProjectAssistantController` takes the response with `@Res()` in place of
+  `@AiStream()`. It reads the project and its feed and picks the model before
+  it writes anything, so a 401, 400 or 404 is still a plain HTTP error, then
+  pipes `streamText()`'s UI-message stream through the AI SDK's
+  `pipeUIMessageStreamToResponse()`. An `AbortController` replaces
+  `@AiAbortSignal()`: a client that disconnects before the response finishes
+  aborts the model call, also when it left before the handler got to the
+  model. The in-stream error frame keeps the AI SDK's default text,
+  `An error occurred.`
+- `AiModule.forRoot()` is gone, and with it the `x-powered-by: nest-native-ai`
+  header it set on the stream.
+- `createOfflineModel()` (`src/modules/assistant/offline-model.ts`) replaces
+  `createMockLanguageModel()` from `@nest-native/ai-sdk/testing`. It streams
+  the digest as word deltas and stops when the call's abort signal fires, as a
+  hosted provider does.
+- The roster is now six nest-native libraries: the `package.json`
+  description, the README's badge, chapter table and Compatibility table
+  (which gains an `ai` row), the Pages site, `docs/architecture.md`,
+  GUIDELINES, SECURITY.md and the issue and PR templates say so.
+
 ### Fixed — the HTTP app passes its Express adapter, so body-parser errors keep their 4xx status on NestJS 12
 
 - `createApp()` and the client smoke pass `new ExpressAdapter()` to

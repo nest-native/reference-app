@@ -18,7 +18,7 @@
 - [ ] `outbox` / `inbox` (the official outbox: store, handlers, consumers, worker)
 - [ ] Kafka profile (consumers, transport)
 - [ ] `reminders` (deferred + scheduled jobs)
-- [ ] `events-catalog` (asyncapi) / `assistant` (ai-sdk)
+- [ ] `events-catalog` (asyncapi) / `assistant` (the AI SDK)
 - [ ] `cache` (read caching, tag invalidation)
 - [ ] `auth` / `context` / lockout
 - [ ] `trpc` (routers, generated schema)
@@ -40,7 +40,7 @@
       contracts); a bump keeps the SQLite store's contract spec green
 - [ ] Only primary onboarding APIs (`*.forRoot()` / `forRootAsync()` and the
       public decorators) of the other libraries used — kafka, jobs,
-      asyncapi, ai-sdk, cache, lockout
+      asyncapi, cache, lockout
 - [ ] Roster unchanged, or the roster checklist was followed (README,
       `package.json` description, `docs/`, repo About — `npm run docs:check`)
 

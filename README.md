@@ -3,10 +3,10 @@
 <p>
   <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/license-MIT-green.svg" alt="License" /></a>
   <img src="https://img.shields.io/badge/node-%3E%3D22.12-brightgreen.svg" alt="Node version" />
-  <img src="https://img.shields.io/badge/libraries-7%2F7-0f766e.svg" alt="All seven nest-native libraries" />
+  <img src="https://img.shields.io/badge/libraries-6%2F6-0f766e.svg" alt="All six nest-native libraries" />
 </p>
 
-A production-shaped **multi-tenant work-tracking SaaS** — think a small Linear/Asana — that puts **all seven [nest-native](https://github.com/nest-native) libraries** under realistic backend pressure, on the official [`@nestjs/drizzle`](https://docs.nestjs.com/data/drizzle) module for persistence and the official [`@nestjs/outbox`](https://docs.nestjs.com/reliability/outbox) module for reliable domain events, and composes them the way a real product would: a typed API, reliable domain events, an event backbone, deferred background jobs, a documented event catalog, a streaming AI assistant, brute-force login lockout, and tag-invalidated read caching.
+A production-shaped **multi-tenant work-tracking SaaS** — think a small Linear/Asana — that puts **all six [nest-native](https://github.com/nest-native) libraries** under realistic backend pressure, on the official [`@nestjs/drizzle`](https://docs.nestjs.com/data/drizzle) module for persistence and the official [`@nestjs/outbox`](https://docs.nestjs.com/reliability/outbox) module for reliable domain events, and composes them the way a real product would: a typed API, reliable domain events, an event backbone, deferred background jobs, a documented event catalog, a streaming AI assistant, brute-force login lockout, and tag-invalidated read caching.
 
 It is not a product. It **serves the libraries** — a credible demo a team could adapt, and a feedback loop: if something feels awkward here, that's signal to add API in a separate PR to the relevant library (that's how, for example, `MessagingModule.forRoot`'s `imports` option and `KafkaInboxConsumer`'s `dedupKey` argument came to exist in `@nest-native/messaging`, which the app ran on before the official outbox).
 
@@ -22,7 +22,7 @@ Follow one journey through the code and every library shows up where a real syst
 5. **The event contracts are published.** An **AsyncAPI 3.0 catalog** at `/asyncapi` documents every event so another team could subscribe to your streams.
 6. **AI reads the activity.** A streaming **project assistant** turns a project's recent activity into a status update, token by token.
 
-## Seven libraries, seven chapters
+## Six libraries, six chapters
 
 | Library | Its job in the story | Where in the code |
 | --- | --- | --- |
@@ -30,13 +30,14 @@ Follow one journey through the code and every library shows up where a real syst
 | [`@nest-native/kafka`](https://github.com/nest-native/kafka) | **The event backbone** — the official outbox relays through the app's `KafkaOutboxTransport`, over `@nest-native/kafka`'s producer; `@KafkaConsumer`s build read-models, recording each delivery in the outbox's inbox | the Kafka profile in `src/app.module.ts`, `src/modules/outbox/kafka-outbox.transport.ts`, `src/modules/inbox/*.consumer.ts` |
 | [`@nest-native/jobs`](https://github.com/nest-native/jobs) | **Deferred work** — the assignment reminder: enqueued in the same transaction as the `task.assigned` projection (`uniqueKey` = the event's dedup key), executed exactly once by the worker — **plus recurring work**: a DB-stored cron schedule drives the nightly stale-task sweep | `src/modules/reminders/`, `TaskAssignedProjection` in `src/modules/activity/`, `src/database/schema/jobs.ts` |
 | [`@nest-native/asyncapi`](https://github.com/nest-native/asyncapi) | **The event catalog** — an AsyncAPI 3.0 doc so other teams integrate with your streams | `src/modules/events-catalog/`, served at `/asyncapi` from `src/main.ts` |
-| [`@nest-native/ai-sdk`](https://github.com/nest-native/ai-sdk) | **AI over your data** — a streaming assistant that summarizes a project's activity | `src/modules/assistant/` (`@AiStream`), `POST /projects/:projectId/assistant` |
 | [`@nest-native/cache`](https://github.com/nest-native/cache) | **Read caching without Redis** — expensive reads (`projects.*`, `activity.list`) cached in an in-memory L1 with **tag-based invalidation**: mutations evict by tag (`project:42`), the activity projection invalidates its own feed at the write site, and every entry's TTL is only the backstop. Coherence travels through `@stalefree/core`'s bus seam (in-process by default; set `CACHE_SOCKET_PATH` for the app + worker split) | `src/cache/cache.setup.ts` (`CacheModule.forRootAsync`), `projects.router.ts` + `activity.router.ts` (`wrap` + tags), `activity.service.ts` (write-site invalidation) |
 | [`@nest-native/lockout`](https://github.com/nest-native/lockout) | **Brute-force defense** — failed logins lock an identity (by email OR source IP) *before* the credential is checked; a Drizzle-backed counter on the same SQLite DB, `Retry-After` on the lock, reset on success. tRPC has no HTTP body for the guard's extractor to read, so the login handler calls `LockoutService` directly — the library's documented non-HTTP-transport recipe | `src/auth/lockout.setup.ts` (`LockoutModule.forRootAsync`), `src/auth/auth.service.ts` (`check` → `reportFailure`/`reportSuccess`) |
 
 Underneath, the official [`@nestjs/drizzle`](https://docs.nestjs.com/data/drizzle) module registers the database (`src/database/`). Repositories are plain `@Injectable()` providers that take it with `@InjectDrizzle()`, or with `@InjectTransaction()` when they must join the caller's transaction, and every library reaches it through `getDrizzleToken()`. [`@nestjs-cls/transactional`](https://www.npmjs.com/package/@nestjs-cls/transactional) (with the official Drizzle adapter) ties the outbox write to the business write — its `transactionMode: 'auto'` runs the same `@Transactional()` code against better-sqlite3's synchronous driver locally and an async driver in production.
 
 The domain events run on the official [`@nestjs/outbox`](https://docs.nestjs.com/reliability/outbox) module (`src/modules/outbox/`): a service adds its message with `Outbox.add(tx, …)` inside its own transaction, the worker's relay publishes what committed (leases, retries with backoff, a dead-letter table), and every consumer keeps an inbox that drops redeliveries. The module ships stores for PostgreSQL and MySQL; on SQLite the app implements the module's public store contract itself (`SqliteOutboxStore`) and runs the module's own contract suites against it. One SQLite file shared by the API and the worker is this demo's setup — the module's production checklist keeps the outbox on a database server, which is what the Postgres recipe in [`docs/architecture.md`](docs/architecture.md#production-deployment-recipe) switches to.
+
+The project assistant (`src/modules/assistant/`, `POST /projects/:projectId/assistant`) streams with the [AI SDK](https://ai-sdk.dev) directly. Its controller takes the response with `@Res()` and does everything that can fail before it writes a byte, so a refused or invalid request still gets a plain HTTP error (401, 403, 400, 404); then it pipes `streamText()`'s UI-message stream to the response with the SDK's own `pipeUIMessageStreamToResponse()`, and an `AbortController` stops the model call when the client disconnects. By default the model is an offline one (`offline-model.ts`) that replays a digest of the activity feed, so CI needs no key and no network; set `OPENAI_API_KEY` and the same endpoint streams from OpenAI. The official [`@nestjs/ai`](https://docs.nestjs.com/ai/overview) module does this for NestJS 12 only, so the assistant moves to it when the app moves to NestJS 12 (see [Compatibility](#compatibility)).
 
 ## Three profiles, one codebase
 
@@ -144,7 +145,7 @@ src/
     rabbitmq/                          the RabbitMQ profile — connection, topology, RabbitOutboxTransport, the RabbitInbox engine and its subscribers
     reminders/                         the @nest-native/jobs chapter — the deferred assignment reminder + the scheduled stale-task sweep
     events-catalog/                    @nest-native/asyncapi event declarations
-    assistant/                         @nest-native/ai-sdk streaming project assistant
+    assistant/                         the streaming project assistant, on the AI SDK directly until @nestjs/ai
     audit-log/ memberships/            supporting services
   trpc/                    TrpcModule.forRoot + routers + generated AppRouter
 test/integration/          real-DB tests (node:test) — task workflow, the outbox store's contract suites, dedup, reminder job, asyncapi, AI stream
@@ -194,12 +195,12 @@ One row per library, in chapter order:
 | `@nest-native/kafka` | `0.6.x` |
 | `@nest-native/jobs` | `0.5.x` |
 | `@nest-native/asyncapi` | `0.3.x` |
-| `@nest-native/ai-sdk` | `0.6.x` (on `ai@7`) |
 | `@nest-native/cache` | `0.1.x` (on `@stalefree/core` `0.1.x`) |
 | `@nest-native/lockout` | `0.4.x` (on `@authlock/core` `0.4.x`) |
 | `@nestjs/drizzle` | `0.0.x` (the official module) |
 | `@nestjs/outbox` | `0.1.x` (the official module, on the app's own SQLite store) |
 | `drizzle-orm` | `0.45.x` (with `@nestjs-cls/transactional` `^4` and the official Drizzle adapter) |
+| `ai` | `7.x` (the AI SDK, which the project assistant calls directly until `@nestjs/ai`) |
 
 Every version in that table is checked against `package.json` by
 `npm run docs:check` (also in CI), which fails if a version drifts, if a
@@ -209,16 +210,18 @@ the docs site still counts the old roster.
 The NestJS row is the lockfile's 11.x on purpose. Every library above publishes
 `^11 || ^12` and tests both ends of that range in its own CI (an `11 floor`
 leg pinned to the oldest installable 11, and a `12` leg); this app is the one
-place the seven compose, and it tracks the lockfile's 11 until the libraries'
+place the six compose, and it tracks the lockfile's 11 until the libraries'
 shared flip trigger fires — NestJS 12 above 50% of `@nestjs/core` weekly
 downloads, or NestJS 11 no longer receiving patches — at which point the
-grouped `@nestjs/*` Dependabot PR is merged here as well.
+grouped `@nestjs/*` Dependabot PR is merged here as well. The same change moves
+the project assistant to the official `@nestjs/ai`, whose 0.0.2 peers NestJS
+`^12` only.
 
 ## Philosophy
 
 - **Feel native.** Decorator-first, Nest modules + DI + enhancers, lifecycle hooks. No functional wrappers around library decorators.
 - **Stay honest.** Drizzle stays SQL-first; tRPC stays tRPC; the outbox is a real table, not magic.
-- **Every event has a home.** Emitted in-transaction (the official outbox), delivered over the backbone (kafka), documented (asyncapi), and consumed — including by the AI (ai-sdk).
+- **Every event has a home.** Emitted in-transaction (the official outbox), delivered over the backbone (kafka), documented (asyncapi), and consumed — including by the AI (the AI SDK).
 - **Library fixes ship upstream.** Find a rough edge in a nest-native library while building here? Open the fix as a separate PR to that library, get it merged, then resume.
 
 See [`docs/architecture.md`](docs/architecture.md) for the full tour and [CONTRIBUTING.md](CONTRIBUTING.md) for the design rules.

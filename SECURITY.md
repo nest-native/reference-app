@@ -19,7 +19,7 @@ ships a security release. Compressed request bodies are refused with 415
 (`src/create-app.ts`), so a `Content-Encoding: br` body never reaches Node's
 Brotli decoder before authentication.
 
-The supported line for each of the seven `@nest-native/*` libraries lives in
+The supported line for each of the six `@nest-native/*` libraries lives in
 the README's [Compatibility](README.md#compatibility) table — kept in one
 place, and checked against `package.json` in CI by `npm run docs:check`.
 
