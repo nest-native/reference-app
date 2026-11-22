@@ -85,9 +85,11 @@ app's constitution.
   SQLite store upstream without Rodrigo's explicit OK. The same goes for the
   broker transports and inbox engines in `src/modules/outbox`, `inbox` and
   `rabbitmq`, ported from `@nest-native/messaging`: the module's only broker
-  transport, `ClientProxyTransport`, would change the wire, so the app writes
-  its own against the public `OutboxTransport` class and records deliveries
-  with the public `OutboxInbox`.
+  transport, `ClientProxyTransport`, would change the wire, so the app keeps
+  its own: on Kafka, `@nest-native/kafka/outbox`'s `KafkaOutboxTransport` with
+  a `toRecord` that writes the app's wire; on RabbitMQ, a transport written
+  against the public `OutboxTransport` class. Both record deliveries with the
+  public `OutboxInbox`.
 
 ### 3. Pragmatic Coverage (100% and full-src mutation are NON-goals)
 
@@ -111,9 +113,9 @@ app's constitution.
   the activity feed — SQLite in a file, no broker. This is the profile
   `npm run test` exercises.
 - **Kafka.** Setting `KAFKA_BROKERS` makes the *exact same domain code* relay
-  through the app's `KafkaOutboxTransport`, with `@KafkaConsumer`s on the other
-  side. Event bodies, dedup keys, and wire headers are identical; only the
-  transport swaps.
+  through `@nest-native/kafka`'s `KafkaOutboxTransport`, with `@KafkaConsumer`s
+  on the other side. Event bodies, dedup keys, and wire headers are identical;
+  only the transport swaps.
 - **RabbitMQ.** Setting `RABBITMQ_URL` does the same over RabbitMQ: the outbox
   relays through the app's `RabbitOutboxTransport` to one topic exchange
   (`RABBITMQ_EXCHANGE`, default `reference-app.events`), and consumers on the

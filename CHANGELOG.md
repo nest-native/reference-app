@@ -6,6 +6,21 @@ added them.
 
 ## [Unreleased]
 
+### Changed — the Kafka profile relays through `@nest-native/kafka`'s outbox transport
+
+- `@nest-native/kafka` moves to `^0.7.0`, whose new `@nest-native/kafka/outbox`
+  entrypoint ships a `KafkaOutboxTransport` for the official `@nestjs/outbox`
+  relay. The app's own transport class is gone: `createKafkaOutboxTransport()`
+  builds the library's transport with a `toRecord` that writes the same wire as
+  before (the topic prefix, the business key as the record key, the
+  `x-event-id` and `x-idempotency-key` headers first, the JSON payload as the
+  value), so the consumers are unchanged.
+- What the library adds: a failure no retry can fix (librdkafka's
+  `ERR_MSG_SIZE_TOO_LARGE`, `ERR_TOPIC_EXCEPTION`,
+  `ERR_TOPIC_AUTHORIZATION_FAILED` or `ERR_INVALID_RECORD`) is thrown as
+  `NonRetryableMessageError`, so the relay dead-letters the message at once
+  instead of retrying it until `maxAttempts`.
+
 ### Changed — the project assistant streams with the AI SDK directly, and the roster is six libraries
 
 - `@nest-native/ai-sdk` was retired on 2026-11-21 in favour of the official

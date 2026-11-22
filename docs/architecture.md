@@ -147,10 +147,11 @@ chapter:
   `OutboxModule.forRoot({ … })` from the official `@nestjs/outbox` — or
   `forRootAsync({ … })` when a broker transport needs its client — with the
   app's `SqliteOutboxStore` registered next to it as a provider; and — only
-  when `KAFKA_BROKERS` is set — `KafkaModule.forRootAsync({ … })` plus the
-  app's `KafkaOutboxTransport` and the inbox consumers; or — only when
-  `RABBITMQ_URL` is set — the app's RabbitMQ connection,
-  `RabbitOutboxTransport`, and the `RabbitInbox` subscribers in
+  when `KAFKA_BROKERS` is set — `KafkaModule.forRootAsync({ … })` plus
+  `@nest-native/kafka/outbox`'s `KafkaOutboxTransport`, on the app's wire, and
+  the inbox consumers; or — only when `RABBITMQ_URL` is set — the app's
+  RabbitMQ connection, `RabbitOutboxTransport`, and the `RabbitInbox`
+  subscribers in
   [`src/modules/rabbitmq/`](https://github.com/nest-native/reference-app/blob/main/src/modules/rabbitmq).
   Same file, every profile.
 - [`src/app.module.ts`](https://github.com/nest-native/reference-app/blob/main/src/app.module.ts) →
@@ -571,7 +572,7 @@ same image (see `docker-compose.yml`).
 | `modules/projects/` | Repo + service + tRPC router. `projects.list` / `.get` / `.create` |
 | `modules/memberships/` | Repo + the one registration of it, re-exported through `AuthModule` (consumed by onboarding, `RolesGuard`, and the task tenancy checks) |
 | `modules/audit-log/` | `AuditLogService.record()` |
-| `modules/outbox/` | `SqliteOutboxStore` (the official outbox's store on SQLite), the wire contract, `KafkaOutboxTransport`, the in-process `@OnOutboxMessage()` handlers and `FakeEmailTransport`, `outbox.constants.ts` |
+| `modules/outbox/` | `SqliteOutboxStore` (the official outbox's store on SQLite), the wire contract, `createKafkaOutboxTransport()` (the library's `KafkaOutboxTransport` on that wire), the in-process `@OnOutboxMessage()` handlers and `FakeEmailTransport`, `outbox.constants.ts` |
 | `modules/inbox/` | The Kafka consumers, their `KafkaInbox` engine, and the read-side effects every profile shares (`TaskActivityProjections`, the invite audit) |
 | `modules/rabbitmq/` | The RabbitMQ profile: connection, topology, `RabbitOutboxTransport`, the `RabbitInbox` engine and its subscribers |
 | `modules/onboarding/` | `OrganizationOnboardingService` — the `@Transactional` workflow |
