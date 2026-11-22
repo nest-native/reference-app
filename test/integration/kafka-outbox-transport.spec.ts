@@ -3,8 +3,8 @@ import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 import { KafkaProducerService } from '@nest-native/kafka';
 import { createMockKafkaProducer } from '@nest-native/kafka/testing';
-import type { OutboxMessage } from '@nestjs/outbox';
-import { KafkaOutboxTransport } from '../../src/modules/outbox/kafka-outbox.transport';
+import { NonRetryableMessageError, type OutboxMessage } from '@nestjs/outbox';
+import { createKafkaOutboxTransport } from '../../src/modules/outbox/kafka-outbox.transport';
 
 // Unit test: no live broker. The mock producer records every send() call, so we
 // assert exactly what the transport publishes — topic prefixing, the key
@@ -12,7 +12,7 @@ import { KafkaOutboxTransport } from '../../src/modules/outbox/kafka-outbox.tran
 function makeTransport(prefix: string) {
   const mock = createMockKafkaProducer();
   const service = new KafkaProducerService(mock.producer);
-  const transport = new KafkaOutboxTransport(service, prefix);
+  const transport = createKafkaOutboxTransport(service, prefix);
   return { transport, calls: mock.calls };
 }
 
@@ -118,4 +118,25 @@ test('an attempt the relay already gave up on sends nothing', async () => {
     /publish timed out/,
   );
   assert.equal(calls.send.length, 0);
+});
+
+test('a record no retry can deliver is dead-lettered at once', async () => {
+  const mock = createMockKafkaProducer();
+  mock.producer.send = async () => {
+    throw Object.assign(new Error('Broker: Message size too large'), {
+      code: 10,
+    });
+  };
+  const transport = createKafkaOutboxTransport(
+    new KafkaProducerService(mock.producer),
+    '',
+  );
+
+  // librdkafka's ERR_MSG_SIZE_TOO_LARGE fails every attempt the same way, so
+  // the library throws NonRetryableMessageError and the relay dead-letters the
+  // message instead of retrying it until maxAttempts.
+  await assert.rejects(
+    () => transport.publish(message('evt-huge', {}), live()),
+    NonRetryableMessageError,
+  );
 });

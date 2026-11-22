@@ -27,7 +27,7 @@ Follow one journey through the code and every library shows up where a real syst
 | Library | Its job in the story | Where in the code |
 | --- | --- | --- |
 | [`@nest-native/trpc`](https://github.com/nest-native/trpc) | **The typed API** — task CRUD, project queries, the activity feed, all typesafe end-to-end; the superjson transformer keeps the feed's `Date`s real across the wire (the client link is *required* to match, at compile time), and failed validations reach the client as flattened Zod field errors (`error.data.zodError`); Nest enhancers compose over procedures the usual way — `@UseGuards(AuthGuard, RolesGuard)` plus per-procedure `@Roles(...)` metadata | `src/modules/*/**.router.ts` (`@Router`, `@Query`/`@Mutation`), `src/trpc/` (transformer, error formatting, response meta), generated `AppRouter` |
-| [`@nest-native/kafka`](https://github.com/nest-native/kafka) | **The event backbone** — the official outbox relays through the app's `KafkaOutboxTransport`, over `@nest-native/kafka`'s producer; `@KafkaConsumer`s build read-models, recording each delivery in the outbox's inbox | the Kafka profile in `src/app.module.ts`, `src/modules/outbox/kafka-outbox.transport.ts`, `src/modules/inbox/*.consumer.ts` |
+| [`@nest-native/kafka`](https://github.com/nest-native/kafka) | **The event backbone** — the official outbox relays through `@nest-native/kafka/outbox`'s `KafkaOutboxTransport`, configured to write the app's wire; `@KafkaConsumer`s build read-models, recording each delivery in the outbox's inbox | the Kafka profile in `src/app.module.ts`, `src/modules/outbox/kafka-outbox.transport.ts`, `src/modules/inbox/*.consumer.ts` |
 | [`@nest-native/jobs`](https://github.com/nest-native/jobs) | **Deferred work** — the assignment reminder: enqueued in the same transaction as the `task.assigned` projection (`uniqueKey` = the event's dedup key), executed exactly once by the worker — **plus recurring work**: a DB-stored cron schedule drives the nightly stale-task sweep | `src/modules/reminders/`, `TaskAssignedProjection` in `src/modules/activity/`, `src/database/schema/jobs.ts` |
 | [`@nest-native/asyncapi`](https://github.com/nest-native/asyncapi) | **The event catalog** — an AsyncAPI 3.0 doc so other teams integrate with your streams | `src/modules/events-catalog/`, served at `/asyncapi` from `src/main.ts` |
 | [`@nest-native/cache`](https://github.com/nest-native/cache) | **Read caching without Redis** — expensive reads (`projects.*`, `activity.list`) cached in an in-memory L1 with **tag-based invalidation**: mutations evict by tag (`project:42`), the activity projection invalidates its own feed at the write site, and every entry's TTL is only the backstop. Coherence travels through `@stalefree/core`'s bus seam (in-process by default; set `CACHE_SOCKET_PATH` for the app + worker split) | `src/cache/cache.setup.ts` (`CacheModule.forRootAsync`), `projects.router.ts` + `activity.router.ts` (`wrap` + tags), `activity.service.ts` (write-site invalidation) |
@@ -44,7 +44,7 @@ The project assistant (`src/modules/assistant/`, `POST /projects/:projectId/assi
 Everything above runs **with no infrastructure** by default:
 
 - **In-process (default)** — the outbox's built-in `local` transport runs the app's `@OnOutboxMessage()` handlers, each behind its own inbox, and they build the activity feed. SQLite in a file, no broker. This is what the tests exercise.
-- **Kafka** — set `KAFKA_BROKERS` and the exact same domain code relays through the app's `KafkaOutboxTransport` to a real cluster, with `@KafkaConsumer`s on the other side. The event bodies, dedup keys, and wire headers are identical; only the transport swaps.
+- **Kafka** — set `KAFKA_BROKERS` and the exact same domain code relays through `@nest-native/kafka`'s `KafkaOutboxTransport` to a real cluster, with `@KafkaConsumer`s on the other side. The event bodies, dedup keys, and wire headers are identical; only the transport swaps.
 - **RabbitMQ** — set `RABBITMQ_URL` instead and the same code relays through the app's `RabbitOutboxTransport` to one topic exchange: a message counts as published only once the broker has acked it on a confirm channel and not returned it. Consumers on the app's `RabbitInbox` engine run the same read-sides as the Kafka consumers, from quorum queues the app declares at startup — the task lifecycle's three topics share one queue, routed by key — and poison lands in a dead-letter queue with its reason. The two broker profiles are exclusive; set one.
 
 ## Auth, tenancy, and roles
@@ -192,7 +192,7 @@ One row per library, in chapter order:
 | Node.js | `>=22.12` |
 | NestJS | `11.x` |
 | `@nest-native/trpc` | `0.7.x` |
-| `@nest-native/kafka` | `0.6.x` |
+| `@nest-native/kafka` | `0.7.x` |
 | `@nest-native/jobs` | `0.5.x` |
 | `@nest-native/asyncapi` | `0.3.x` |
 | `@nest-native/cache` | `0.1.x` (on `@stalefree/core` `0.1.x`) |

@@ -30,7 +30,7 @@ import {
   InboxPruneScheduleSetup,
 } from './modules/outbox/inbox-prune.job';
 import { InProcessOutboxModule } from './modules/outbox/in-process-outbox.module';
-import { KafkaOutboxTransport } from './modules/outbox/kafka-outbox.transport';
+import { createKafkaOutboxTransport } from './modules/outbox/kafka-outbox.transport';
 import { sqliteOutboxStoreProvider } from './modules/outbox/sqlite-outbox.store';
 import { RabbitmqConnectionModule } from './modules/rabbitmq/rabbitmq-connection.module';
 import { RabbitmqInboxModule } from './modules/rabbitmq/rabbitmq-inbox.module';
@@ -50,12 +50,12 @@ import { AppCacheModule } from './cache/cache.setup';
 // configured, the outbox's built-in `local` transport runs the in-process
 // `@OnOutboxMessage()` handlers (FakeEmailTransport, the activity feed). With
 // KAFKA_BROKERS set, the global KafkaModule comes online, the outbox publishes
-// through the app's KafkaOutboxTransport, and the Kafka consumers record their
-// deliveries in the outbox's inbox. RABBITMQ_URL is the third profile, the same
-// shape over the app's RabbitOutboxTransport and RabbitMQ consumers. The two
-// broker profiles are mutually exclusive (loadEnv refuses both). Every profile
-// keeps the messages and the inboxes in the app's SQLite database, through
-// SqliteOutboxStore, registered once below.
+// through @nest-native/kafka's KafkaOutboxTransport on the app's wire, and the
+// Kafka consumers record their deliveries in the outbox's inbox. RABBITMQ_URL
+// is the third profile, the same shape over the app's RabbitOutboxTransport and
+// RabbitMQ consumers. The two broker profiles are mutually exclusive (loadEnv
+// refuses both). Every profile keeps the messages and the inboxes in the app's
+// SQLite database, through SqliteOutboxStore, registered once below.
 const {
   kafka: kafkaEnv,
   rabbitmq: rabbitmqEnv,
@@ -121,7 +121,7 @@ function messagingImports(): NonNullable<ModuleMetadata['imports']> {
       useFactory: (producer: KafkaProducerService) => ({
         ...outboxOptions,
         transports: {
-          kafka: new KafkaOutboxTransport(producer, kafkaEnv.topicPrefix),
+          kafka: createKafkaOutboxTransport(producer, kafkaEnv.topicPrefix),
         },
       }),
     }),

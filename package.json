@@ -53,7 +53,7 @@
     "@nest-native/asyncapi": "^0.3.0",
     "@nest-native/cache": "^0.1.0",
     "@nest-native/jobs": "^0.5.2",
-    "@nest-native/kafka": "^0.6.0",
+    "@nest-native/kafka": "^0.7.0",
     "@nest-native/lockout": "^0.4.0",
     "@nest-native/trpc": "^0.7.0",
     "@nestjs-cls/transactional": "^4.0.2",
